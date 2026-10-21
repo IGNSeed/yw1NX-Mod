@@ -1,8 +1,9 @@
 # yw1NX-Mod
 
 「妖怪ウォッチ1 for Nintendo Switch」向けMODの開発基盤です。
-現在はPhase 0A / 0Bで、ゲーム機能・Hook・メニュー描画・注入処理は未実装です。
-このリポジトリの成果物は静的ライブラリで、そのままSwitchに導入できるMODではありません。
+Phase 1 Stage B.0.1の開発用Bootstrapを追加しました。固定版exlaunchのModule初期化と
+`exl_main`への到達を診断します。Switch実機での起動・権限・ログ取得はPENDINGです。
+ゲームの描画・入力Hook、ImGui描画、ゲーム機能変更は実装していません。
 
 基準バージョンは1.4.0、Title IDは`0100C0000CEEA000`です。
 EdiZon表示値`7F35BDFC5DE46CF1`は完全なNSO Build IDと区別します。
@@ -26,6 +27,41 @@ Linuxでは`DEVKITPRO`環境変数または`-DDEVKITPRO=/opt/devkitpro`を指定
 MSVCなどのホスト環境でも、toolchain指定を省略して静的ライブラリをビルドできます。
 ホスト動作の検証とSwitch実機での動作確認は別の判定です。
 
+### Bootstrap（開発用）
+
+こちらはCMake 3.24以上、C++23対応devkitA64、devkitProの`elf2nso`が必要です。
+上記と別のビルド先を指定します。
+
+```powershell
+cmake -S . -B ../output/build-bootstrap-release -G Ninja `
+  '-DCMAKE_TOOLCHAIN_FILE=cmake/devkit_a64.cmake' `
+  '-DDEVKITPRO=C:/devkitPro' '-DCMAKE_BUILD_TYPE=Release' `
+  '-DYW1_BUILD_BOOTSTRAP=ON'
+cmake --build ../output/build-bootstrap-release
+```
+
+固定リビジョンのexlaunchをビルド領域に取得し、アーカイブとソース全体のSHA-256を
+検証します。既に取得した同一ソースを使う場合は`YW1_EXLAUNCH_SOURCE_DIR`を指定できます。
+上流のリンカースクリプトとModule初期化を使い、ゲームのRTLDは置換しません。
+出力は`yw1_bootstrap.elf`と`yw1_bootstrap.nso`です。自動配置・SDコピーは行いません。
+
+導入には、対象ゲーム専用に検証した開発用NPDMとの組合せが必要です。
+元NPDMのままでは必須SVCが不足します。NPDM・ゲーム原本・生成バイナリは公開しません。
+対象はAtmosphère 1.12.1で、MesosphereのGetInfo拡張によりprocess handleを取得します。
+取得失敗またはProgram ID不一致では上流初期化をスキップします。
+上流RwPages初期化中の失敗はabortになる可能性があり、正常起動は実機確認が必要です。
+ログは初期化時の`OutputDebugString`だけです。SVC成功はログ受信を保証しません。
+
+上流のIPC fallbackを使わず、専用BSSヒープの限定アロケーターを使用します。
+外部動的importを禁止し、専用init関数以外の動的exportを隠すことで、ゲームの
+`malloc`やランタイムへの依存・シンボル競合を防ぎます。アロケーターは単一初期化中の
+予約ノード専用で、一般用途・並列処理・繰返しHook登録には使用できません。
+
+`source/diagnostics/egl_snapshot.*`はB.0.2向けの未接続の準備コードです。
+Bootstrapにリンクしません。実行範囲検証済み関数とcurrent contextを要求し、
+GLの照会発行と成功を区別します。EGLエラーの保持・Hookの登録時期・スレッド安全性を
+確認するまでB.0.2のビルド・配置は保留します。
+
 ## 構成と更新への対応
 
 現在の実装は`source/game/versions/`と`source/game/symbols/`です。
@@ -48,14 +84,17 @@ Switch固有処理を`source/platform/`、描画・入力を`source/ui/`、
 ## 依存関係
 
 [dependencies.json](dependencies.json)に調査したリビジョンと統合状況を記録しています。
-Phase 0では外部コードを同梱・リンクしていません。
+Bootstrapを有効にした場合のみ、固定版exlaunchの必要なソースを外部からビルドします。
 
 - [exlaunch](https://github.com/shadowninja108/exlaunch): GPL-2.0、Make/devkitA64。
 - [imgui-xeno](https://github.com/roccodev/imgui-xeno): GPL-2.0、CMake/C++23、NVN backend。
   指定リビジョンに固定されたDear ImGuiと、同梱のNNSDK関連宣言を使用する構成です。
 - [Dear ImGui](https://github.com/ocornut/imgui): MIT。独立調査版とimgui-xenoの固定版は別です。
 
-外部ライセンス・著作権表示は統合時に保持し、配布形態を含めて各ライセンスに従います。
+取得したexlaunchのLICENSE・著作権表示を保持します。リンクした成果物の配布時は
+GPL-2.0の条件に従い、対応ソースとこのビルド設定を併せて扱ってください。
+今後の描画はDear ImGui公式OpenGL3バックエンドを第一候補とします。
+imgui-xenoとその固定ImGui依存はNVN再評価用に保持し、Bootstrapにはリンクしません。
 NVN、入力、NNSDK ABI、loaderとゲーム固有の接続経路は今後の検証対象です。
 外部リポジトリのテストや資料を公開対象へそのまま取り込まない方針です。
 

@@ -1,6 +1,7 @@
 {
     "schemaVersion": 1,
-    "integrationStatus": "planned",
+    "integrationStatus": "bootstrap-development-hardware-pending",
+    "preferredRenderingBackend": "Dear ImGui official OpenGL3 (diagnostics pending)",
     "dependencies": [
         {
             "name": "exlaunch",
@@ -8,7 +9,9 @@
             "revision": "f9f4b0dd07b68f97958cb9c79228bbca22ca80d5",
             "license": "GPL-2.0",
             "buildSystem": "GNU Make and devkitA64",
-            "notes": "Phase 0では未リンク。loader、NNSDK、配置設定は後続Phaseで確認。"
+            "archiveSha256": "52dcf8c9acb9f8887a802836b9f409b8032d3f077711cbe1dce4cc7a72c5b97b",
+            "sourceManifestSha256": "cc75a6a0fa57d5bf6d3c7e209339e7c3d46fcd9b7a5368ecef8264374f6d978f",
+            "notes": "B.0.1 Module初期化のみをReleaseリンク。専用process handle取得・アロケーター・限定exportを使用。Hook未導入、実機PENDING。"
         },
         {
             "name": "imgui-xeno",
@@ -17,7 +20,7 @@
             "license": "GPL-2.0",
             "buildSystem": "CMake 3.21+, C++23, devkitA64",
             "imguiSubmoduleRevision": "d4ddc46e7773e9a9b68f965d007968f35ca4e09a",
-            "notes": "NVN backend。ゲーム固有の描画経路とNNSDK依存は未検証。"
+            "notes": "NVN再評価用に固定依存を保持。B.0.1では未リンク。ゲーム固有の描画経路とNNSDK依存は未検証。"
         },
         {
             "name": "Dear ImGui",

@@ -13,3 +13,8 @@ else()
     target_compile_options(yw1nx_foundation PRIVATE
         -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti)
 endif()
+
+option(YW1_BUILD_BOOTSTRAP "Build the Stage B.0.1 bootstrap module" OFF)
+if(YW1_BUILD_BOOTSTRAP)
+    include(cmake/bootstrap_module.cmake)
+endif()

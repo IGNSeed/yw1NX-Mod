@@ -5,3 +5,4 @@ BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Empty
 PointerAlignment: Left
 SortIncludes: CaseSensitive
+FixNamespaceComments: false
