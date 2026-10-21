@@ -24,3 +24,12 @@ extern "C" void* memcpy(void* destination, const void* source, std::size_t size)
     }
     return destination;
 }
+
+extern "C" void* memset(void* destination, int value, std::size_t size) noexcept {
+    // IPCページの初期化もゲーム側のlibcやallocatorへ依存させない。
+    auto* output = static_cast<volatile unsigned char*>(destination);
+    for (std::size_t index = 0; index < size; ++index) {
+        output[index] = static_cast<unsigned char>(value);
+    }
+    return destination;
+}

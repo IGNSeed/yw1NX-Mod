@@ -1,6 +1,6 @@
 {
     "schemaVersion": 1,
-    "integrationStatus": "bootstrap-development-hardware-pending",
+    "integrationStatus": "bootstrap-sd-logging-development-hardware-pending",
     "preferredRenderingBackend": "Dear ImGui official OpenGL3 (diagnostics pending)",
     "dependencies": [
         {
@@ -12,6 +12,14 @@
             "archiveSha256": "52dcf8c9acb9f8887a802836b9f409b8032d3f077711cbe1dce4cc7a72c5b97b",
             "sourceManifestSha256": "cc75a6a0fa57d5bf6d3c7e209339e7c3d46fcd9b7a5368ecef8264374f6d978f",
             "notes": "B.0.1 Module初期化のみをReleaseリンク。専用process handle取得・アロケーター・限定exportを使用。Hook未導入、実機PENDING。"
+        },
+        {
+            "name": "libnx protocol reference",
+            "repository": "https://github.com/switchbrew/libnx",
+            "revision": "48cd083ed86443bd51c5c0ea58bdcf1aafc52c80",
+            "license": "ISC",
+            "linkedRuntime": false,
+            "notes": "v4.10.0のCMIF/HIPC・FS/SMコマンドを参照。独立した有限非同期IPCクライアントを自作し、libnxのcrt0・TLS・FSグローバル・service managerは未リンク。"
         },
         {
             "name": "imgui-xeno",

@@ -52,6 +52,25 @@ cmake --build ../output/build-bootstrap-release
 上流RwPages初期化中の失敗はabortになる可能性があり、正常起動は実機確認が必要です。
 ログは初期化時の`OutputDebugString`だけです。SVC成功はログ受信を保証しません。
 
+SDログ診断版（B.0.1.2）は、別のビルド先で上記に
+`-DYW1_BOOTSTRAP_SD_LOGGING=ON`を加えて生成します。初期化イベントを固定32 KiBに蓄積し、
+独立した低優先度Workerからraw SVCの非同期CMIF/HIPCで一度だけ追記します。
+保存先は`SD:/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD/logs.txt`です。
+NNSDK/libnxのFS初期化、ゲームのmount表・TLS・allocatorは使用しません。
+libnxの参照リビジョンとISC表示は依存manifestと本README末尾に保持します。
+
+IPCの待機は1要求最大1秒、全体8秒・最大64要求、SM接続は1回です。
+Worker作成はkernel内で最大100 msの資源待機を伴い得ます。起動失敗はResultで中断します。
+タイムアウト後は取消完了とみなさず、静的バッファと所有セッションを再利用しません。
+SMは対象Atmosphèreの`DetachClient`完了後だけ閉じ、ゲームのservice登録を保護します。
+Detachの完了が確認できない場合も、追加セッションをプロセス終了まで保持します。
+保存用バッファ32 KiBに加え、専用stack64 KiB、IPC/path/完了記録用12 KiB等を使用します。
+既存ログを削除・truncateせず、1 MiBから安全余裕分を引いた上限で追記を停止します。
+`payload_flush_completed`は直前の起動ログ本体のWrite/Flush成功後に追記する記録です。
+自身を含む最後の完了記録のFlush結果はファイル内から自己証明できないため、区別します。
+エラー時にゲーム側をabortしませんが、既存exlaunch初期化のabort条件は残っています。
+FS権限は既存NPDMのDebug bitに依存し、実機SDアクセス成功はPENDINGです。
+
 上流のIPC fallbackを使わず、専用BSSヒープの限定アロケーターを使用します。
 外部動的importを禁止し、専用init関数以外の動的exportを隠すことで、ゲームの
 `malloc`やランタイムへの依存・シンボル競合を防ぎます。アロケーターは単一初期化中の
@@ -107,3 +126,11 @@ snake_caseの`.hpp`/`.cpp`を使用します。自作コードのコメントは
 
 コミット件名は`種類: 日本語の変更概要 / English summary`です。
 種類は「実装・修正・改善・整理・設定・文書・テスト」。force pushは禁止です。
+
+## libnxプロトコル参照の著作権表示
+
+Copyright 2017-2018 libnx Authors
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

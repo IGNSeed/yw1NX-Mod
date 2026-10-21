@@ -3,6 +3,10 @@
 
 #include <atomic>
 
+#if YW1_BOOTSTRAP_SD_LOGGING
+#include "logging/sd_writer.hpp"
+#endif
+
 extern "C" void exl_module_init();
 extern "C" Result __real_svcMapProcessMemory(void*, Handle, u64, u64);
 extern "C" Result __real_svcUnmapProcessMemory(void*, Handle, u64, u64);
@@ -14,11 +18,17 @@ std::atomic<bool> initEntered{false};
 std::atomic<bool> mainEntered{false};
 
 template <std::size_t Size> void writeLog(const char (&message)[Size]) {
+#if YW1_BOOTSTRAP_SD_LOGGING
+    static_cast<void>(yw1::logging::memoryLog().append(message, Size - 1));
+#endif
     // 出力の成功は実機ログを取得するまで認定しない。
     static_cast<void>(svcOutputDebugString(message, Size - 1));
 }
 
 void writeResult(const char* label, std::size_t length, Result result) {
+#if YW1_BOOTSTRAP_SD_LOGGING
+    static_cast<void>(yw1::logging::memoryLog().appendResult(label, length, result));
+#endif
     static_cast<void>(svcOutputDebugString(label, length));
     char text[] = "0x00000000\n";
     constexpr char kDigits[] = "0123456789ABCDEF";
@@ -34,6 +44,9 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     if (initEntered.exchange(true)) {
         return;
     }
+#if YW1_BOOTSTRAP_SD_LOGGING
+    writeLog("\n=== YW1 B0.1.2 boot / independent FS IPC ===\n");
+#endif
     writeLog("[YW1 B0.1] init_enter; EGL hooks disabled\n");
     const Handle handle = exl::util::proc_handle::Get();
     if (handle == INVALID_HANDLE) {
@@ -50,6 +63,10 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     // ここから先の上流RwPages等の失敗はabortになり得るため、実機判定は保留する。
     exl_module_init();
     writeLog("[YW1 B0.1] init_return; original game startup may continue\n");
+#if YW1_BOOTSTRAP_SD_LOGGING
+    // ファイル操作は専用Workerだけで実行し、このcallbackを待たせない。
+    yw1::logging::startSdLogger();
+#endif
 }
 
 extern "C" void exl_main(void*, void*) {
