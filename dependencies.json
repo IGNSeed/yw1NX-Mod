@@ -1,0 +1,31 @@
+{
+    "schemaVersion": 1,
+    "integrationStatus": "planned",
+    "dependencies": [
+        {
+            "name": "exlaunch",
+            "repository": "https://github.com/shadowninja108/exlaunch",
+            "revision": "f9f4b0dd07b68f97958cb9c79228bbca22ca80d5",
+            "license": "GPL-2.0",
+            "buildSystem": "GNU Make and devkitA64",
+            "notes": "Phase 0では未リンク。loader、NNSDK、配置設定は後続Phaseで確認。"
+        },
+        {
+            "name": "imgui-xeno",
+            "repository": "https://github.com/roccodev/imgui-xeno",
+            "revision": "6391c9403c2f8e9c45a420f763ebd26ca03179c0",
+            "license": "GPL-2.0",
+            "buildSystem": "CMake 3.21+, C++23, devkitA64",
+            "imguiSubmoduleRevision": "d4ddc46e7773e9a9b68f965d007968f35ca4e09a",
+            "notes": "NVN backend。ゲーム固有の描画経路とNNSDK依存は未検証。"
+        },
+        {
+            "name": "Dear ImGui",
+            "repository": "https://github.com/ocornut/imgui",
+            "revision": "4be0b47ecc0edd535a40a79f6ceb6f1ac5936483",
+            "license": "MIT",
+            "buildSystem": "core C++ sources with platform and renderer backends",
+            "notes": "調査時点の独立参照。imgui-xeno内の固定版と混在・置換しない。"
+        }
+    ]
+}
