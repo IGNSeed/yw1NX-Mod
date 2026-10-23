@@ -1,6 +1,6 @@
 {
     "schemaVersion": 1,
-    "integrationStatus": "bootstrap-sd-logging-development-hardware-pending",
+    "integrationStatus": "bootstrap-independent-companion-diagnostics-hardware-pending",
     "preferredRenderingBackend": "Dear ImGui official OpenGL3 (diagnostics pending)",
     "dependencies": [
         {
@@ -20,6 +20,13 @@
             "license": "ISC",
             "linkedRuntime": false,
             "notes": "v4.10.0のCMIF/HIPC・FS/SMコマンドを参照。独立した有限非同期IPCクライアントを自作し、libnxのcrt0・TLS・FSグローバル・service managerは未リンク。"
+        },
+        {
+            "name": "libnx companion runtime",
+            "repository": "https://github.com/switchbrew/libnx",
+            "license": "ISC",
+            "linkedTargets": ["companion-nro"],
+            "notes": "B.0.1.5 NROだけをインストール済みdevkitPro/libnxへリンク。実アーカイブ・specs・linker scriptのSHAはローカルdeploy manifestへ記録し、protocol referenceの固定commitとの同一性は主張しない。ゲームModuleへはlibnx runtimeをリンクしない。"
         },
         {
             "name": "imgui-xeno",

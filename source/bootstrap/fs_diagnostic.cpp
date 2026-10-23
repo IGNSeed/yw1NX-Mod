@@ -25,13 +25,21 @@ template <std::size_t Size> void resultEvent(const char (&label)[Size], Result r
 
 void runFsDiagnostic() {
     logging::recordProgress(logging::Stage::InitEnter, 0);
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    event("\n=== YW1 B0.1.5 boot / FS diagnostic only ===\n");
+    event("source=module-bootstrap\n");
+#else
     event("\n=== YW1 B0.1.4 boot / FS diagnostic only ===\n");
+#endif
     event("[YW1] init_enter; profile=fs-only; exlaunch=not_requested\n");
     u64 titleId = 0;
     auto result = svcGetInfo(&titleId, InfoType_ProgramId, kCurrentProcess, 0);
+    logging::recordProgress(logging::Stage::ProgramId, result);
+    logging::recordObservedTitleId(titleId);
     resultEvent("[YW1] program_id_pseudo_result=", result);
     // 照会成功時の対象不一致を、別の照会で上書きして通過させない。
     if (result == 0 && titleId != kTitleId) {
+        logging::recordProgress(logging::Stage::GuardDenied, logging::kWrongEntry);
         event("[YW1] program_id_mismatch; worker_skipped\n");
         return;
     }
@@ -45,8 +53,10 @@ void runFsDiagnostic() {
         resultEvent("[YW1] program_id_real_handle_result=", result);
     }
     logging::recordProgress(logging::Stage::ProgramId, result);
-    logging::progress.observedTitleId.store(titleId, std::memory_order_release);
+    logging::recordObservedTitleId(titleId);
     if (result != 0 || titleId != kTitleId) {
+        logging::recordProgress(logging::Stage::GuardDenied,
+                                result != 0 ? result : logging::kWrongEntry);
         event("[YW1] program_id_unverified; worker_skipped\n");
         return;
     }
@@ -54,6 +64,7 @@ void runFsDiagnostic() {
 
     std::uint32_t priority = 59;
     const auto priorityResult = svcGetThreadPriority(&priority, kCurrentThread);
+    logging::recordProgress(logging::Stage::PriorityQuery, priorityResult);
     resultEvent("[YW1] caller_priority_query_result=", priorityResult);
     // 対象NPDMの許容28..59内で起動元と同じ優先度。取得失敗時は従来値を保つ。
     if (priorityResult != 0 || priority < 28 || priority > 59) {

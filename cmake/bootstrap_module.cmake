@@ -75,6 +75,13 @@ if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
         "${PROJECT_SOURCE_DIR}/source/bootstrap/fs_diagnostic.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_FS_DIAGNOSTIC=1)
 endif()
+if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
+    target_sources(yw1_bootstrap PRIVATE
+        "${PROJECT_SOURCE_DIR}/source/diagnostics/module_state.cpp")
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS=1)
+    target_link_options(yw1_bootstrap PRIVATE
+        -Wl,--undefined=yw1_module_identity,--undefined=yw1_module_diagnostics_state)
+endif()
 target_include_directories(yw1_bootstrap BEFORE PRIVATE
     "${PROJECT_SOURCE_DIR}/source" "${yw1_exl}" "${yw1_exl}/lib"
     "${DEVKITPRO}/libnx/include")
@@ -110,3 +117,14 @@ add_custom_command(TARGET yw1_bootstrap POST_BUILD
     COMMAND "${yw1_elf2nso}" "$<TARGET_FILE:yw1_bootstrap>"
         "${CMAKE_CURRENT_BINARY_DIR}/yw1_bootstrap.nso"
     VERBATIM)
+if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
+    add_custom_command(TARGET yw1_bootstrap POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}"
+            "-DELF=$<TARGET_FILE:yw1_bootstrap>"
+            "-DNSO=${CMAKE_CURRENT_BINARY_DIR}/yw1_bootstrap.nso"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/diagnostic_target.hpp"
+            -P "${PROJECT_SOURCE_DIR}/cmake/diagnostic_target.cmake"
+        VERBATIM)
+    set_property(TARGET yw1_bootstrap APPEND PROPERTY LINK_DEPENDS
+        "${PROJECT_SOURCE_DIR}/cmake/diagnostic_target.cmake")
+endif()

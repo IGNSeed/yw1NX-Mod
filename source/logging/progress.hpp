@@ -1,6 +1,9 @@
 #pragma once
 
 #include "memory_log.hpp"
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+#include "diagnostics/module_state.hpp"
+#endif
 
 namespace yw1::logging {
 
@@ -32,7 +35,10 @@ enum class Stage : std::uint32_t {
     FileWrite,
     FileFlush,
     SessionClose,
-    Saved
+    Saved,
+    PriorityQuery = 60,
+    GuardDenied,
+    LaunchAwait
 };
 
 constexpr Result kInProgress = 0xFFFFFFFF;
@@ -49,10 +55,13 @@ struct ProgressState {
     std::atomic<std::uint32_t> directoryIndex{0xFFFFFFFF};
 };
 
-// 回収方法を実装したとは扱わない。各stageとResultの組を一つのatomicで保持する。
+// 各stageとResultの組を一つのatomicで保持する。外部回収は専用build optionで有効にする。
 inline constinit ProgressState progress;
 
 inline Result recordProgress(Stage stage, Result result) {
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    diagnostics::recordModuleProgress(static_cast<std::uint32_t>(stage), result);
+#endif
     const auto value = (static_cast<std::uint64_t>(stage) << 32) | result;
     progress.latest.store(value, std::memory_order_release);
     if (result != 0 && result != kInProgress) {
@@ -62,6 +71,22 @@ inline Result recordProgress(Stage stage, Result result) {
             empty, value, std::memory_order_release, std::memory_order_relaxed));
     }
     return result;
+}
+
+inline void recordObservedTitleId(std::uint64_t titleId) {
+    progress.observedTitleId.store(titleId, std::memory_order_release);
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    diagnostics::yw1_module_diagnostics_state.observedTitleId.store(titleId,
+                                                                    std::memory_order_release);
+#endif
+}
+
+inline void recordDirectoryIndex(std::uint32_t index) {
+    progress.directoryIndex.store(index, std::memory_order_release);
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    diagnostics::yw1_module_diagnostics_state.directoryIndex.store(index,
+                                                                   std::memory_order_release);
+#endif
 }
 
 } // 名前空間 yw1::logging

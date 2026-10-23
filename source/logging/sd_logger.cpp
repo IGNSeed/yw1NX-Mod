@@ -40,19 +40,25 @@ std::uint64_t ticks(void*) {
     svcSleepThread(50000000);
 #endif
     const auto readyDeadline = svcGetSystemTick() + 1920000;
+    recordProgress(Stage::LaunchAwait, kInProgress);
     while (!launchComplete.load(std::memory_order_acquire)) {
         if (svcGetSystemTick() >= readyDeadline) {
-            recordProgress(Stage::WorkerEnter, kDeadline);
+            recordProgress(Stage::LaunchAwait, kDeadline);
             svcExitThread();
             __builtin_unreachable();
         }
         svcSleepThread(1000000);
     }
+    recordProgress(Stage::LaunchAwait, 0);
     constexpr char kStart[] = "[YW1] worker_enter\n";
     static_cast<void>(memoryLog().append(kStart, sizeof(kStart) - 1));
     const KernelApi api{nullptr, connect, submit, wait, close, ticks};
     IpcFs fs(api, storage, svcGetSystemTick() + 8 * 19200000);
     lastOutcome = writer.save(memoryLog(), fs, storage);
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    diagnostics::yw1_module_diagnostics_state.ipcQuarantined.store(lastOutcome.quarantined ? 1 : 0,
+                                                                   std::memory_order_release);
+#endif
     recordProgress(Stage::Saved, lastOutcome.result);
     char line[128];
     constexpr char kLabel[] = "[YW1] logger_final_result=";

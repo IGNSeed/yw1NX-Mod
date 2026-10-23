@@ -48,6 +48,9 @@ void writeResult(const char* label, std::size_t length, Result result) {
 } // 無名名前空間
 
 extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    yw1::logging::recordProgress(yw1::logging::Stage::InitEnter, 0);
+#endif
     if (initEntered.exchange(true)) {
         return;
     }
@@ -72,7 +75,7 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     const Result result = svcGetInfo(&titleId, InfoType_ProgramId, handle, 0);
 #if YW1_BOOTSTRAP_SD_LOGGING
     yw1::logging::recordProgress(yw1::logging::Stage::ProgramId, result);
-    yw1::logging::progress.observedTitleId.store(titleId, std::memory_order_release);
+    yw1::logging::recordObservedTitleId(titleId);
 #endif
     if (R_FAILED(result) || titleId != kTitleId) {
         writeLog("[YW1 B0.1] program_id_mismatch_or_query_failed; initialization skipped\n");

@@ -63,7 +63,7 @@ SaveOutcome SdWriter::save(MemoryLog& log, IpcFs& fs, IpcStorage& storage) {
                                              "/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD"};
         std::uint32_t index = 0;
         for (const auto* path : kDirectories) {
-            progress.directoryIndex.store(index++, std::memory_order_release);
+            recordDirectoryIndex(index++);
             outcome.result = prepareDirectory(fs, path);
             if (outcome.result != 0) {
                 break;
