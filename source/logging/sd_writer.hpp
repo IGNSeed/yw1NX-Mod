@@ -25,6 +25,6 @@ class SdWriter {
     std::atomic<bool> entered_{false};
 };
 
-void startSdLogger();
+void startSdLogger(int priority = 59);
 
 } // 名前空間 yw1::logging

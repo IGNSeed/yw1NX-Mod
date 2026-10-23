@@ -8,6 +8,12 @@
 #include "logging/sd_writer.hpp"
 #endif
 
+#if YW1_BOOTSTRAP_FS_DIAGNOSTIC
+namespace yw1::bootstrap {
+void runFsDiagnostic();
+}
+#endif
+
 extern "C" void exl_module_init();
 extern "C" Result __real_svcMapProcessMemory(void*, Handle, u64, u64);
 extern "C" Result __real_svcUnmapProcessMemory(void*, Handle, u64, u64);
@@ -45,6 +51,9 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     if (initEntered.exchange(true)) {
         return;
     }
+#if YW1_BOOTSTRAP_FS_DIAGNOSTIC
+    yw1::bootstrap::runFsDiagnostic();
+#else
 #if YW1_BOOTSTRAP_SD_LOGGING
     yw1::logging::recordProgress(yw1::logging::Stage::InitEnter, 0);
     writeLog("\n=== YW1 B0.1.3 boot / independent FS IPC ===\n");
@@ -80,6 +89,7 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     yw1::logging::recordProgress(yw1::logging::Stage::InitReturn, 0);
     // ファイル操作は専用Workerだけで実行し、このcallbackを待たせない。
     yw1::logging::startSdLogger();
+#endif
 #endif
 }
 

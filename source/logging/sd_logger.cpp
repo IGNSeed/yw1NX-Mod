@@ -9,6 +9,7 @@ namespace {
 constinit IpcStorage storage;
 constinit SdWriter writer;
 constinit std::atomic<bool> workerStarted{false};
+constinit std::atomic<bool> launchComplete{false};
 constinit SaveOutcome lastOutcome;
 // スタックとIPC参照領域はモジュールがプロセス終了まで所有する。
 alignas(4096) unsigned char workerStack[64 * 1024];
@@ -34,16 +35,27 @@ std::uint64_t ticks(void*) {
 [[noreturn]] void worker(void*) {
     recordProgress(Stage::WorkerEnter, 0);
     // raw kernel threadではNNSDK ThreadType/newlib/libnx TLSを初期化も参照もしない。
-    // 使用関数は自作コードとraw SVCだけ。低優先度の同一coreで一度yieldする。
+    // 使用関数は自作コードとraw SVCだけ。起動元の記録完了前には保存を始めない。
+#if !YW1_BOOTSTRAP_FS_DIAGNOSTIC
     svcSleepThread(50000000);
-    constexpr char kStart[] = "[YW1 B0.1.3] worker_start_result=";
-    static_cast<void>(memoryLog().appendResult(kStart, sizeof(kStart) - 1, 0));
+#endif
+    const auto readyDeadline = svcGetSystemTick() + 1920000;
+    while (!launchComplete.load(std::memory_order_acquire)) {
+        if (svcGetSystemTick() >= readyDeadline) {
+            recordProgress(Stage::WorkerEnter, kDeadline);
+            svcExitThread();
+            __builtin_unreachable();
+        }
+        svcSleepThread(1000000);
+    }
+    constexpr char kStart[] = "[YW1] worker_enter\n";
+    static_cast<void>(memoryLog().append(kStart, sizeof(kStart) - 1));
     const KernelApi api{nullptr, connect, submit, wait, close, ticks};
     IpcFs fs(api, storage, svcGetSystemTick() + 8 * 19200000);
     lastOutcome = writer.save(memoryLog(), fs, storage);
     recordProgress(Stage::Saved, lastOutcome.result);
     char line[128];
-    constexpr char kLabel[] = "[YW1 B0.1.3] logger_final_result=";
+    constexpr char kLabel[] = "[YW1] logger_final_result=";
     const auto size =
         formatResult(line, sizeof(line), kLabel, sizeof(kLabel) - 1, lastOutcome.result);
     static_cast<void>(svcOutputDebugString(line, size));
@@ -54,7 +66,7 @@ std::uint64_t ticks(void*) {
 
 } // 無名名前空間
 
-void startSdLogger() {
+void startSdLogger(int priority) {
     if (workerStarted.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
@@ -62,10 +74,10 @@ void startSdLogger() {
     Handle handle = 0;
     recordProgress(Stage::WorkerCreate, kInProgress);
     auto result = svcCreateThread(&handle, reinterpret_cast<void*>(worker), nullptr,
-                                  workerStack + sizeof(workerStack), 59, -2);
+                                  workerStack + sizeof(workerStack), priority, -2);
     progress.workerCreate.store(result, std::memory_order_release);
     recordProgress(Stage::WorkerCreate, result);
-    constexpr char kCreate[] = "[YW1 B0.1.3] worker_create_result=";
+    constexpr char kCreate[] = "[YW1] worker_create_result=";
     static_cast<void>(memoryLog().appendResult(kCreate, sizeof(kCreate) - 1, result));
     if (result != 0 || handle == 0) {
         return;
@@ -74,22 +86,21 @@ void startSdLogger() {
     result = svcStartThread(handle);
     progress.workerStart.store(result, std::memory_order_release);
     recordProgress(Stage::WorkerStart, result);
-    // 成功時のログ追加はWorker側へ委ねる。エラー追加も非待機の共有Bufferを使う。
+    constexpr char kStart[] = "[YW1] worker_start_result=";
+    static_cast<void>(memoryLog().appendResult(kStart, sizeof(kStart) - 1, result));
+    // Workerはこの起動元がResult記録とhandle解放を完了するまで保存しない。
     // 成功時にはkernel自身が実行中threadの参照を保持する。
     const auto closeResult = svcCloseHandle(handle);
     progress.workerHandleClose.store(closeResult, std::memory_order_release);
     recordProgress(Stage::WorkerHandleClose, closeResult);
-    if (result != 0) {
-        constexpr char kStart[] = "[YW1 B0.1.3] worker_start_result=";
-        static_cast<void>(memoryLog().appendResult(kStart, sizeof(kStart) - 1, result));
-    }
+    constexpr char kClose[] = "[YW1] worker_handle_close_result=";
+    static_cast<void>(memoryLog().appendResult(kClose, sizeof(kClose) - 1, closeResult));
     if (closeResult != 0) {
-        constexpr char kClose[] = "[YW1 B0.1.3] worker_handle_close_result=";
         char line[128];
         const auto size = formatResult(line, sizeof(line), kClose, sizeof(kClose) - 1, closeResult);
-        static_cast<void>(memoryLog().append(line, size));
         static_cast<void>(svcOutputDebugString(line, size));
     }
+    launchComplete.store(true, std::memory_order_release);
 }
 
 } // 名前空間 yw1::logging
