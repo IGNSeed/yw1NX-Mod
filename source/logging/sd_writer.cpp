@@ -49,19 +49,21 @@ SaveOutcome SdWriter::save(MemoryLog& log, IpcFs& fs, IpcStorage& storage) {
         outcome.result = kAlreadyRun;
         return outcome;
     }
-    event(log, "[YW1 B0.1.2] logger_start\n");
+    event(log, "[YW1 B0.1.3] logger_start\n");
     outcome.result = fs.initialize();
-    resultEvent(log, "[YW1 B0.1.2] service_init_result=", outcome.result);
+    resultEvent(log, "[YW1 B0.1.3] service_init_result=", outcome.result);
     if (outcome.result == 0) {
         outcome.result = fs.openSd();
-        resultEvent(log, "[YW1 B0.1.2] fs_open_result=", outcome.result);
+        resultEvent(log, "[YW1 B0.1.3] fs_open_result=", outcome.result);
     }
     if (outcome.result == 0) {
         // 指定フォルダまでの不足部分だけを作り、既存ファイルとの衝突を拒否する。
         constexpr const char* kDirectories[]{"/atmosphere", "/atmosphere/contents",
                                              "/atmosphere/contents/0100C0000CEEA000",
                                              "/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD"};
+        std::uint32_t index = 0;
         for (const auto* path : kDirectories) {
+            progress.directoryIndex.store(index++, std::memory_order_release);
             outcome.result = prepareDirectory(fs, path);
             if (outcome.result != 0) {
                 break;
@@ -70,7 +72,7 @@ SaveOutcome SdWriter::save(MemoryLog& log, IpcFs& fs, IpcStorage& storage) {
     }
     if (outcome.result == 0) {
         outcome.result = prepareFile(fs);
-        resultEvent(log, "[YW1 B0.1.2] file_open_result=", outcome.result);
+        resultEvent(log, "[YW1 B0.1.3] file_open_result=", outcome.result);
     }
     std::uint64_t offset = 0;
     if (outcome.result == 0) {
@@ -78,12 +80,12 @@ SaveOutcome SdWriter::save(MemoryLog& log, IpcFs& fs, IpcStorage& storage) {
         if (outcome.result == 0 &&
             (offset > kFileCapacity || kLogCapacity + 1024 > kFileCapacity - offset)) {
             // 上限時に削除・truncate・ローテーションはしない。
-            outcome.result = kFileLimit;
+            outcome.result = recordProgress(Stage::FileSize, kFileLimit);
         }
     }
     LogView view{};
     if (outcome.result == 0) {
-        resultEvent(log, "[YW1 B0.1.2] memory_dropped=", log.dropped());
+        resultEvent(log, "[YW1 B0.1.3] memory_dropped=", log.dropped());
         if (!log.seal(view) || view.size == 0) {
             outcome.result = kBufferFull;
         }
@@ -103,13 +105,13 @@ SaveOutcome SdWriter::save(MemoryLog& log, IpcFs& fs, IpcStorage& storage) {
             const auto add = [&](const char* label, std::size_t length, Result result) {
                 size += formatResult(receipt + size, kPageSize - size, label, length, result);
             };
-            constexpr char kWrite[] = "[YW1 B0.1.2] file_write_result=";
-            constexpr char kFlush[] = "[YW1 B0.1.2] file_flush_result=";
+            constexpr char kWrite[] = "[YW1 B0.1.3] file_write_result=";
+            constexpr char kFlush[] = "[YW1 B0.1.3] file_flush_result=";
             add(kWrite, sizeof(kWrite) - 1, outcome.writeResult);
             if (outcome.writeResult == 0) {
                 add(kFlush, sizeof(kFlush) - 1, outcome.flushResult);
                 if (outcome.payloadPersisted) {
-                    constexpr char kComplete[] = "[YW1 B0.1.2] payload_flush_completed\n";
+                    constexpr char kComplete[] = "[YW1 B0.1.3] payload_flush_completed\n";
                     for (std::size_t i = 0; i < sizeof(kComplete) - 1; ++i) {
                         receipt[size++] = kComplete[i];
                     }

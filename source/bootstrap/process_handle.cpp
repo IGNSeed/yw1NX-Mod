@@ -1,6 +1,10 @@
 #include <common.hpp>
 #include <lib/util/sys/cur_proc_handle.hpp>
 
+#if YW1_BOOTSTRAP_SD_LOGGING
+#include "logging/progress.hpp"
+#endif
+
 namespace exl::util::proc_handle {
 namespace {
 
@@ -15,6 +19,10 @@ Handle Get() {
     }
     u64 handle = 0;
     const Result result = svcGetInfo(&handle, InfoType_MesosphereCurrentProcess, INVALID_HANDLE, 0);
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::progress.processHandleResult.store(result, std::memory_order_release);
+    yw1::logging::recordProgress(yw1::logging::Stage::ProcessHandle, result);
+#endif
     if (R_FAILED(result) || handle == INVALID_HANDLE || handle > 0xFFFFFFFFu) {
         return INVALID_HANDLE;
     }

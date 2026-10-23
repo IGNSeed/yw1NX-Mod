@@ -1,6 +1,7 @@
 #pragma once
 
 #include "memory_log.hpp"
+#include "progress.hpp"
 
 namespace yw1::logging {
 
@@ -52,6 +53,9 @@ class IpcFs {
     }
 
   private:
+    Result callRaw(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
+                   void* output, std::size_t outputSize, Handle* object, const char* path,
+                   const char* buffer, std::size_t bufferSize, bool pid);
     Result call(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
                 void* output = nullptr, std::size_t outputSize = 0, Handle* object = nullptr,
                 const char* path = nullptr, const char* buffer = nullptr,

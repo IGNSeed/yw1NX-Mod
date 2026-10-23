@@ -21,6 +21,39 @@ std::size_t align16(std::size_t offset) {
 Result IpcFs::call(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
                    void* output, std::size_t outputSize, Handle* object, const char* path,
                    const char* buffer, std::size_t bufferSize, bool pid) {
+    Stage stage = Stage::SessionClose;
+    if (session == sm_) {
+        stage = command == 0 ? Stage::SmRegister
+                             : (command == 1 ? Stage::SmGetService : Stage::SmDetach);
+    } else if (session == proxy_) {
+        stage = command == 1 ? Stage::FspSetProcess : Stage::SdOpen;
+    } else if (session == fs_) {
+        switch (command) {
+        case 0:
+            stage = Stage::CreateFile;
+            break;
+        case 2:
+            stage = Stage::CreateDirectory;
+            break;
+        case 7:
+            stage = Stage::EntryType;
+            break;
+        case 8:
+            stage = Stage::FileOpen;
+            break;
+        }
+    } else if (session == file_) {
+        stage =
+            command == 4 ? Stage::FileSize : (command == 1 ? Stage::FileWrite : Stage::FileFlush);
+    }
+    recordProgress(stage, kInProgress);
+    return recordProgress(stage, callRaw(session, command, input, inputSize, output, outputSize,
+                                         object, path, buffer, bufferSize, pid));
+}
+
+Result IpcFs::callRaw(Handle session, std::uint32_t command, const void* input,
+                      std::size_t inputSize, void* output, std::size_t outputSize, Handle* object,
+                      const char* path, const char* buffer, std::size_t bufferSize, bool pid) {
     // 送信失敗・タイムアウト時の再送はしない。書込みの二重実行を避ける。
     if (quarantined_ || session == 0 || inputSize > 64 || outputSize > 8 ||
         (inputSize && input == nullptr) || (outputSize && output == nullptr) ||
@@ -155,7 +188,8 @@ Result IpcFs::initialize() {
     }
     // 名前付きport接続は1回。SM未起動・資源不足なら安全に中断する。
     Handle sm = 0;
-    Result result = api_.connect(api_.user, &sm, "sm:");
+    recordProgress(Stage::SmConnect, kInProgress);
+    Result result = recordProgress(Stage::SmConnect, api_.connect(api_.user, &sm, "sm:"));
     if (result != 0) {
         return result;
     }
@@ -177,7 +211,7 @@ Result IpcFs::initialize() {
         result = detachSm();
     }
     if (result == 0) {
-        result = release(sm_);
+        result = recordProgress(Stage::SmClose, release(sm_));
     }
     if (result == 0) {
         result = call(proxy_, 1, &pid, sizeof(pid), nullptr, 0, nullptr, nullptr, nullptr, 0, true);
@@ -227,7 +261,7 @@ Result IpcFs::release(Handle& handle) {
     if (handle == 0) {
         return 0;
     }
-    const auto result = api_.close(api_.user, handle);
+    const auto result = recordProgress(Stage::SessionClose, api_.close(api_.user, handle));
     handle = 0;
     return result;
 }

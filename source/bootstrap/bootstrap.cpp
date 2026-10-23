@@ -4,6 +4,7 @@
 #include <atomic>
 
 #if YW1_BOOTSTRAP_SD_LOGGING
+#include "logging/progress.hpp"
 #include "logging/sd_writer.hpp"
 #endif
 
@@ -45,25 +46,38 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
         return;
     }
 #if YW1_BOOTSTRAP_SD_LOGGING
-    writeLog("\n=== YW1 B0.1.2 boot / independent FS IPC ===\n");
+    yw1::logging::recordProgress(yw1::logging::Stage::InitEnter, 0);
+    writeLog("\n=== YW1 B0.1.3 boot / independent FS IPC ===\n");
 #endif
     writeLog("[YW1 B0.1] init_enter; EGL hooks disabled\n");
     const Handle handle = exl::util::proc_handle::Get();
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::ProcessHandle,
+                                 handle == INVALID_HANDLE ? yw1::logging::kInvalidResponse : 0);
+#endif
     if (handle == INVALID_HANDLE) {
         writeLog("[YW1 B0.1] process_handle_unavailable; initialization skipped\n");
         return;
     }
     u64 titleId = 0;
     const Result result = svcGetInfo(&titleId, InfoType_ProgramId, handle, 0);
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::ProgramId, result);
+    yw1::logging::progress.observedTitleId.store(titleId, std::memory_order_release);
+#endif
     if (R_FAILED(result) || titleId != kTitleId) {
         writeLog("[YW1 B0.1] program_id_mismatch_or_query_failed; initialization skipped\n");
         return;
     }
     writeLog("[YW1 B0.1] process_handle_ready; entering pinned exlaunch initialization\n");
     // ここから先の上流RwPages等の失敗はabortになり得るため、実機判定は保留する。
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::Exlaunch, yw1::logging::kInProgress);
+#endif
     exl_module_init();
     writeLog("[YW1 B0.1] init_return; original game startup may continue\n");
 #if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::InitReturn, 0);
     // ファイル操作は専用Workerだけで実行し、このcallbackを待たせない。
     yw1::logging::startSdLogger();
 #endif
@@ -71,6 +85,9 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
 
 extern "C" void exl_main(void*, void*) {
     if (!mainEntered.exchange(true)) {
+#if YW1_BOOTSTRAP_SD_LOGGING
+        yw1::logging::recordProgress(yw1::logging::Stage::ExlMain, 0);
+#endif
         writeLog("[YW1 B0.1] exl_main_reached; no hooks, rendering, or input changes\n");
     }
 }
@@ -79,7 +96,13 @@ extern "C" Result __wrap_svcMapProcessMemory(void* destination, Handle process, 
                                              u64 size) {
     // Module内のリンク時ラップだけで、ゲームのSVCや命令を書き換えない。
     writeLog("[YW1 B0.1] RwPages map begin\n");
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::RwMap, yw1::logging::kInProgress);
+#endif
     const Result result = __real_svcMapProcessMemory(destination, process, source, size);
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::RwMap, result);
+#endif
     constexpr char kLabel[] = "[YW1 B0.1] RwPages map result=";
     writeResult(kLabel, sizeof(kLabel) - 1, result);
     return result;
@@ -88,6 +111,9 @@ extern "C" Result __wrap_svcMapProcessMemory(void* destination, Handle process, 
 extern "C" Result __wrap_svcUnmapProcessMemory(void* destination, Handle process, u64 source,
                                                u64 size) {
     const Result result = __real_svcUnmapProcessMemory(destination, process, source, size);
+#if YW1_BOOTSTRAP_SD_LOGGING
+    yw1::logging::recordProgress(yw1::logging::Stage::RwUnmap, result);
+#endif
     constexpr char kLabel[] = "[YW1 B0.1] RwPages unmap result=";
     writeResult(kLabel, sizeof(kLabel) - 1, result);
     return result;

@@ -1,3 +1,4 @@
+#include "progress.hpp"
 #include "sd_writer.hpp"
 
 #include <common.hpp>
@@ -31,16 +32,18 @@ std::uint64_t ticks(void*) {
 }
 
 [[noreturn]] void worker(void*) {
+    recordProgress(Stage::WorkerEnter, 0);
     // raw kernel threadではNNSDK ThreadType/newlib/libnx TLSを初期化も参照もしない。
     // 使用関数は自作コードとraw SVCだけ。低優先度の同一coreで一度yieldする。
     svcSleepThread(50000000);
-    constexpr char kStart[] = "[YW1 B0.1.2] worker_start_result=";
+    constexpr char kStart[] = "[YW1 B0.1.3] worker_start_result=";
     static_cast<void>(memoryLog().appendResult(kStart, sizeof(kStart) - 1, 0));
     const KernelApi api{nullptr, connect, submit, wait, close, ticks};
     IpcFs fs(api, storage, svcGetSystemTick() + 8 * 19200000);
     lastOutcome = writer.save(memoryLog(), fs, storage);
+    recordProgress(Stage::Saved, lastOutcome.result);
     char line[128];
-    constexpr char kLabel[] = "[YW1 B0.1.2] logger_final_result=";
+    constexpr char kLabel[] = "[YW1 B0.1.3] logger_final_result=";
     const auto size =
         formatResult(line, sizeof(line), kLabel, sizeof(kLabel) - 1, lastOutcome.result);
     static_cast<void>(svcOutputDebugString(line, size));
@@ -57,24 +60,35 @@ void startSdLogger() {
     }
     // 起動ThreadのTLS、SM、FS、allocatorを一切借用しない。失敗はResultで戻す。
     Handle handle = 0;
+    recordProgress(Stage::WorkerCreate, kInProgress);
     auto result = svcCreateThread(&handle, reinterpret_cast<void*>(worker), nullptr,
                                   workerStack + sizeof(workerStack), 59, -2);
-    constexpr char kCreate[] = "[YW1 B0.1.2] worker_create_result=";
+    progress.workerCreate.store(result, std::memory_order_release);
+    recordProgress(Stage::WorkerCreate, result);
+    constexpr char kCreate[] = "[YW1 B0.1.3] worker_create_result=";
     static_cast<void>(memoryLog().appendResult(kCreate, sizeof(kCreate) - 1, result));
     if (result != 0 || handle == 0) {
         return;
     }
+    recordProgress(Stage::WorkerStart, kInProgress);
     result = svcStartThread(handle);
-    // 起動直後のWorkerとの共有書込みを避け、これ以降はメモリログへ追加しない。
+    progress.workerStart.store(result, std::memory_order_release);
+    recordProgress(Stage::WorkerStart, result);
+    // 成功時のログ追加はWorker側へ委ねる。エラー追加も非待機の共有Bufferを使う。
     // 成功時にはkernel自身が実行中threadの参照を保持する。
     const auto closeResult = svcCloseHandle(handle);
+    progress.workerHandleClose.store(closeResult, std::memory_order_release);
+    recordProgress(Stage::WorkerHandleClose, closeResult);
     if (result != 0) {
-        constexpr char kStart[] = "[YW1 B0.1.2] worker_start_result=";
+        constexpr char kStart[] = "[YW1 B0.1.3] worker_start_result=";
         static_cast<void>(memoryLog().appendResult(kStart, sizeof(kStart) - 1, result));
     }
     if (closeResult != 0) {
-        constexpr char kClose[] = "[YW1 B0.1.2] worker_handle_close_result=";
-        static_cast<void>(svcOutputDebugString(kClose, sizeof(kClose) - 1));
+        constexpr char kClose[] = "[YW1 B0.1.3] worker_handle_close_result=";
+        char line[128];
+        const auto size = formatResult(line, sizeof(line), kClose, sizeof(kClose) - 1, closeResult);
+        static_cast<void>(memoryLog().append(line, size));
+        static_cast<void>(svcOutputDebugString(line, size));
     }
 }
 
