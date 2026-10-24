@@ -22,6 +22,12 @@ if(YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC)
     target_compile_definitions(yw1_diagnostics PRIVATE YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC=1)
     set(yw1_diagnostic_version "B0.2.1")
 endif()
+if(YW1_COMPANION_EGL_GOT_PROBE)
+    target_sources(yw1_diagnostics PRIVATE source/companion/got_probe.cpp)
+    target_link_libraries(yw1_diagnostics PRIVATE yw1nx_foundation)
+    target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_EGL_GOT_PROBE=1)
+    set(yw1_diagnostic_version "B0.2.2")
+endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)

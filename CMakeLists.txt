@@ -22,7 +22,14 @@ option(YW1_BUILD_DIAGNOSTICS_COMPANION "Build the read-only diagnostics NRO" OFF
 option(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC "Verify exlaunch initialization without a direct FS writer" OFF)
 option(YW1_BOOTSTRAP_EGL_DIAGNOSTIC "Inspect EGL hook prerequisites without installing a hook" OFF)
 option(YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC "Report blocked safe-hook prerequisites without installing" OFF)
+option(YW1_COMPANION_EGL_GOT_PROBE "Build a read-only GOT companion for the unchanged B021 module" OFF)
 option(YW1_EGL_HOOK_ENABLED "Enable the EGL hook after installer safety verification" OFF)
+if(YW1_COMPANION_EGL_GOT_PROBE AND
+    (YW1_BUILD_BOOTSTRAP OR NOT YW1_BUILD_DIAGNOSTICS_COMPANION OR
+     NOT YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS OR NOT YW1_BOOTSTRAP_EGL_DIAGNOSTIC OR
+     NOT YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC))
+    message(FATAL_ERROR "GOT probe requires companion-only mode and the B021 external/EGL/safe ABI")
+endif()
 if(YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC AND NOT YW1_BOOTSTRAP_EGL_DIAGNOSTIC)
     message(FATAL_ERROR "Safe hook diagnostics require the EGL diagnostic profile")
 endif()
@@ -30,7 +37,8 @@ if(YW1_EGL_HOOK_ENABLED)
     message(FATAL_ERROR "EGL hook installer safety is unverified; hook-enabled artifacts are blocked")
 endif()
 if(YW1_BOOTSTRAP_EGL_DIAGNOSTIC AND
-    (YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC OR NOT YW1_BUILD_BOOTSTRAP OR
+    (YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC OR
+     (NOT YW1_BUILD_BOOTSTRAP AND NOT YW1_COMPANION_EGL_GOT_PROBE) OR
      NOT YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS OR YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_FS_DIAGNOSTIC))
     message(FATAL_ERROR "EGL diagnostics require bootstrap/external diagnostics and disable other profiles")
 endif()
@@ -54,6 +62,8 @@ if(YW1_BOOTSTRAP_SD_LOGGING AND NOT YW1_BUILD_BOOTSTRAP)
 endif()
 if(YW1_BUILD_BOOTSTRAP)
     include(cmake/bootstrap_module.cmake)
+elseif(YW1_COMPANION_EGL_GOT_PROBE)
+    include(cmake/diagnostic_baseline.cmake)
 endif()
 if(YW1_BUILD_DIAGNOSTICS_COMPANION)
     include(cmake/diagnostics_companion.cmake)

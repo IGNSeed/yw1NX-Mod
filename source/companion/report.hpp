@@ -8,8 +8,17 @@
 
 #include <cstdarg>
 #include <cstdio>
+#if YW1_COMPANION_EGL_GOT_PROBE
+#include "got_probe.hpp"
+#endif
 
 namespace yw1::companion {
+
+#if YW1_COMPANION_EGL_GOT_PROBE
+constexpr char kCompanionVersion[] = "B0.2.2";
+#else
+inline constexpr auto& kCompanionVersion = diagnostics::kDiagnosticVersion;
+#endif
 
 constexpr std::uint32_t kNotAttempted = UINT32_MAX;
 constexpr std::uint32_t kInvalidData = 0xE101;
@@ -37,7 +46,7 @@ struct Report {
     bool truncated = false;
     std::uint32_t firstAnomaly = 0;
 
-    void append(const char *format, ...) {
+    void append(const char* format, ...) {
         va_list args;
         va_start(args, format);
         const auto length = std::vsnprintf(text + size, sizeof(text) - size, format, args);
@@ -49,7 +58,7 @@ struct Report {
         size += static_cast<std::size_t>(length);
     }
 
-    std::uint32_t result(const char *label, std::uint32_t value) {
+    std::uint32_t result(const char* label, std::uint32_t value) {
         if (firstAnomaly == 0 && value != 0 && value != kNotAttempted) {
             firstAnomaly = value;
         }
@@ -65,7 +74,7 @@ struct ModuleRecord {
 };
 static_assert(sizeof(ModuleRecord) == 48);
 
-inline bool equalId(const std::uint8_t *left, const std::uint8_t *right) {
+inline bool equalId(const std::uint8_t* left, const std::uint8_t* right) {
     for (std::size_t i = 0; i < 32; ++i) {
         if (left[i] != right[i]) {
             return false;
@@ -75,7 +84,7 @@ inline bool equalId(const std::uint8_t *left, const std::uint8_t *right) {
 }
 
 // Loaderの最大32件を超えて読まず、同一Build IDの複数候補も採用しない。
-inline int findModule(const ModuleRecord *modules, std::size_t count, const std::uint8_t *buildId) {
+inline int findModule(const ModuleRecord* modules, std::size_t count, const std::uint8_t* buildId) {
     if (modules == nullptr || buildId == nullptr || count > 32) {
         return -2;
     }
@@ -93,7 +102,7 @@ inline int findModule(const ModuleRecord *modules, std::size_t count, const std:
     return found;
 }
 
-inline bool validRead(const ModuleRecord &module, std::uint64_t offset, std::size_t size) {
+inline bool validRead(const ModuleRecord& module, std::uint64_t offset, std::size_t size) {
     return module.base != 0 && module.base % 4096 == 0 && module.base <= UINT64_MAX - offset &&
            size % 8 == 0 && offset % 8 == 0 &&
            diagnostics::contains(module.base, module.size, module.base + offset, size) &&
@@ -108,6 +117,9 @@ struct Observation {
     std::uint32_t result = kNotAttempted;
     bool snapshotRead = false;
     bool cleanupFailed = false;
+#if YW1_COMPANION_EGL_GOT_PROBE
+    GotObservation got{};
+#endif
     diagnostics::ModuleSnapshot snapshot{};
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
     diagnostics::EglDiagnosticWire egl{};
@@ -122,11 +134,11 @@ struct Initialization {
     int directWriterEnabled = -1;
 };
 
-inline Initialization initialization(const Observation &observation) {
+inline Initialization initialization(const Observation& observation) {
     if (!observation.snapshotRead) {
         return {};
     }
-    const auto &state = observation.snapshot;
+    const auto& state = observation.snapshot;
     return {state.results[4] != 0 ? 1 : 0, state.results[5] == diagnostics::kPresent ? 1 : 0,
             state.results[4] == diagnostics::kPresent ? 1 : 0,
             state.writerPolicy == 2 ? 0 : (state.writerPolicy == 1 ? 1 : -1)};
@@ -141,7 +153,10 @@ struct BootstrapLog {
     bool duplicate = false;
 };
 
-Observation inspectTarget(Report &report, BootstrapLog *bootstrap = nullptr);
+Observation inspectTarget(Report& report, BootstrapLog* bootstrap = nullptr);
+#if YW1_COMPANION_EGL_GOT_PROBE
+void appendGotReport(Report& report, const Observation& observation, const BootstrapLog& bootstrap);
+#endif
 
 struct FileOutcome {
     std::uint32_t sdOpen = kNotAttempted;
@@ -156,7 +171,7 @@ struct FileOutcome {
     std::size_t savedThrough = 0;
 };
 
-FileOutcome saveReport(Report &report, std::size_t startOffset = 0);
-std::uint32_t saveBootstrapLog(Report &report, BootstrapLog &bootstrap);
+FileOutcome saveReport(Report& report, std::size_t startOffset = 0);
+std::uint32_t saveBootstrapLog(Report& report, BootstrapLog& bootstrap);
 
 } // 名前空間 yw1::companion

@@ -36,14 +36,31 @@ class BoundReader {
         : process_(process), module_(module), report_(report) {}
 
     Result read(std::uint64_t offset, void* output, std::size_t size) {
-        if (quarantined_ || output == nullptr || !validRead(module_, offset, size)) {
+        return readFrom(module_, offset, output, size);
+    }
+#if YW1_COMPANION_EGL_GOT_PROBE
+    Result readGot(const ModuleRecord& main, std::uint64_t& output) {
+        if (!equalId(main.buildId, diagnostics::kMainBuildId)) {
+            return kWrongTarget;
+        }
+        return readFrom(main, kGotSlotOffset, &output, 8);
+    }
+#endif
+    bool quarantined() const {
+        return quarantined_;
+    }
+
+  private:
+    Result readFrom(const ModuleRecord& module, std::uint64_t offset, void* output,
+                    std::size_t size) {
+        if (quarantined_ || output == nullptr || !validRead(module, offset, size)) {
             return kInvalidData;
         }
         if (!envIsSyscallHinted(0x74) || !envIsSyscallHinted(0x75)) {
             report_.append("memory_read_not_attempted=svc_hint_unavailable\n");
             return kUnavailable;
         }
-        const auto source = module_.base + offset;
+        const auto source = module.base + offset;
         const auto page = source & ~std::uint64_t{4095};
         virtmemLock();
         auto* destination = virtmemFindAslr(4096, 4096);
@@ -71,16 +88,75 @@ class BoundReader {
         return unmapped;
     }
 
-    bool quarantined() const {
-        return quarantined_;
-    }
-
-  private:
     Handle process_;
     ModuleRecord module_;
     Report& report_;
     bool quarantined_ = false;
 };
+
+#if YW1_COMPANION_EGL_GOT_PROBE
+static_assert(sizeof(MemoryInfo) == 40 && offsetof(MemoryInfo, perm) == 24);
+bool validGameInfo(const MemoryInfo& info, std::uint64_t address, std::size_t size) {
+    return info.addr % 4096 == 0 && info.size % 4096 == 0 && (info.perm & ~7u) == 0 &&
+           diagnostics::contains(info.addr, info.size, address, size);
+}
+void inspectGot(BoundReader& reader, Handle process, std::span<const ModuleRecord> modules,
+                bool complete, std::uint64_t pid, std::uint64_t title, GotObservation& output) {
+    output.result = validateGotRead(pid, title, modules, complete, output);
+    if (output.result != 0) {
+        return;
+    }
+    if (reader.quarantined()) {
+        output.result = kSessionClosed;
+        return;
+    }
+    const auto main = findModule(modules.data(), modules.size(), diagnostics::kMainBuildId);
+    if (envIsSyscallHinted(0x76)) {
+        MemoryInfo info{};
+        u32 pageInfo = 0;
+        // QueryMemory(current process)ではなく、検証済みgame handleを明示する。
+        output.pageQueryResult =
+            svcQueryProcessMemory(&info, &pageInfo, process, output.slotAddress);
+        if (output.pageQueryResult == 0) {
+            if (!validGameInfo(info, output.slotAddress & ~std::uint64_t{4095}, 4096)) {
+                output.result = kInvalidData;
+                return;
+            }
+            output.pagePermission = info.perm;
+            if ((info.perm & 1) == 0) {
+                output.result = 0xE108;
+                return;
+            }
+        }
+    }
+    std::uint64_t value = 0;
+    output.attempted = true;
+    output.readResult = reader.readGot(modules[main], value);
+    output.result = output.readResult;
+    if (output.result != 0) {
+        return;
+    }
+    output.slotValue = value;
+    output.valueKnown = true;
+    classifyGot(modules, output);
+    if (output.normalizedKnown && envIsSyscallHinted(0x76)) {
+        MemoryInfo info{};
+        u32 pageInfo = 0;
+        // 未知pointerの逆参照や命令実行はしない。module内と判明したpointerの属性照会だけ。
+        output.targetQueryResult =
+            svcQueryProcessMemory(&info, &pageInfo, process, output.slotValue);
+        if (output.targetQueryResult == 0 && validGameInfo(info, output.slotValue, 1)) {
+            output.targetPermission = info.perm;
+            output.executable = (info.perm & 4) != 0 ? 1 : 0;
+            if (output.executable == 0) {
+                output.binding = GotBinding::NonExecutable;
+            } else if (output.binding == GotBinding::Unknown && output.slotValue % 4 == 0) {
+                output.binding = GotBinding::ExecutableCandidate;
+            }
+        }
+    }
+}
+#endif
 
 void readBootstrapLog(BoundReader& reader, Report& report, BootstrapLog& output) {
     output.readResult = kExportChanged;
@@ -271,6 +347,15 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                       hook.commitAttempted, hook.commit, hook.rollbackAttempted, hook.rollback,
                       hook.active, hook.blockedReason, hook.cleanup, hook.resourcesRetained,
                       hook.leaseRelease);
+#if YW1_COMPANION_EGL_GOT_PROBE
+        report.append("hook_preflight_result_semantics=guard_derived_not_installer_execution\n"
+                      "static_guard_executed=%s static_guard_status=0x%08X\n"
+                      "guard_derived_preflight_result=0x%08X\n"
+                      "installer_preflight_result=0xFFFFFFFF installer_preflight_executed=false\n"
+                      "installer_linked_in_module=false\n",
+                      egl.guardStatus == UINT32_MAX ? "unknown_unrecorded" : "true",
+                      egl.guardStatus, hook.preflight);
+#endif
 #endif
         report.append("egl_hook_install_attempted=%u egl_hook_install_result=0x%08X\n"
                       "egl_hook_guard_status=%u egl_hook_blocked_reason=%u\n"
@@ -376,6 +461,11 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                           static_cast<unsigned long long>(bootstrap->header.generation));
         }
     }
+#if YW1_COMPANION_EGL_GOT_PROBE
+    inspectGot(reader, process, {modules, static_cast<std::size_t>(count)},
+               static_cast<std::size_t>(count) < capacity, observation.pid, title, observation.got);
+    observation.cleanupFailed = reader.quarantined();
+#endif
 }
 
 } // 無名名前空間

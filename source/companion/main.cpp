@@ -162,7 +162,7 @@ int main() {
     using namespace yw1::companion;
     report.append("\n=== YW1 Diagnostics %s ===\nsource=companion-nro\n"
                   "title_id=0100C0000CEEA000\n",
-                  yw1::diagnostics::kDiagnosticVersion);
+                  kCompanionVersion);
     report.result("sm_startup_result", smResult);
     report.result("applet_startup_result", appletResult);
     report.result("hid_startup_result", hidResult);
@@ -177,6 +177,9 @@ int main() {
     }
     report.append("module_detected=%d\ndt_init_reached=%d\ninspection_result=0x%08X\n",
                   observation.moduleDetected, observation.dtInitReached, observation.result);
+#if YW1_COMPANION_EGL_GOT_PROBE
+    appendGotReport(report, observation, bootstrapLog);
+#endif
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
         const auto& state = observation.snapshot;
@@ -231,8 +234,7 @@ int main() {
                 return;
             }
             consoleClear();
-            std::printf("YW1 Diagnostics %s\nsource=companion-nro\n\n",
-                        yw1::diagnostics::kDiagnosticVersion);
+            std::printf("YW1 Diagnostics %s\nsource=companion-nro\n\n", kCompanionVersion);
             const auto init = initialization(observation);
             std::printf("exlaunch_init_reached=%d exl_main_reached=%d\n"
                         "exlaunch_init_returned=%d direct_fs_writer_enabled=%d\n",
@@ -272,6 +274,51 @@ int main() {
         summary();
         bool updateRecorded = false;
         bool details = false;
+#if YW1_COMPANION_EGL_GOT_PROBE
+        bool gotPage = false;
+        const auto showGot = [&] {
+            if (!consoleReady(screen)) {
+                return;
+            }
+            consoleClear();
+            const auto& got = observation.got;
+            const auto tri = [](int value) {
+                return value < 0 ? "unknown" : (value ? "yes" : "no");
+            };
+            std::printf("EGL GOT Probe B0.2.2\nRead-only game process snapshot from Album\n"
+                        "Main ID: %s PID: %llu Read Result: %08X\nSlot Offset: 0x8B4398\n",
+                        got.mainVerified ? "verified" : "not verified",
+                        static_cast<unsigned long long>(observation.pid), got.result);
+            if (got.valueKnown) {
+                std::printf("Slot / Companion Value: %016llX\n",
+                            static_cast<unsigned long long>(got.slotValue));
+            } else {
+                std::printf("Slot / Companion Value: unknown\n");
+            }
+            std::printf("Target Module: %s\n", gotTargetName(got.target));
+            if (got.normalizedKnown) {
+                std::printf("Target Offset: %llX\nNormalized Target: %s+%llX\n",
+                            static_cast<unsigned long long>(got.targetOffset),
+                            gotTargetName(got.target),
+                            static_cast<unsigned long long>(got.targetOffset));
+            } else {
+                std::printf("Target Offset / Normalized Target: unknown\n");
+            }
+            std::printf("Expected Export: %s Executable page: %s\n", tri(got.matchesExpected),
+                        tri(got.executable));
+            if (got.pagePermission == UINT32_MAX) {
+                std::printf("Game Page Permission: unknown\n");
+            } else {
+                std::printf("Game Page Permission: %X (game handle)\n", got.pagePermission);
+            }
+            std::printf("Binding State: %s\nBootstrap Value: not collected (module unchanged)\n"
+                        "Hook Active: no GOT Modification: disabled\n"
+                        "Compare full Build ID + offset between boots.\n"
+                        "Album snapshot does not prove stability during play.\n"
+                        "A: summary L: EGL/OpenGL B: back\n",
+                        gotBindingName(got.binding));
+        };
+#endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
         bool eglPage = false;
         const auto showEgl = [&] {
@@ -289,6 +336,18 @@ int main() {
             const auto& egl = observation.egl;
 #if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
             const auto& hook = egl.installer;
+#if YW1_COMPANION_EGL_GOT_PROBE
+            std::printf("Static Guard: %08X (%s)\nGuard-derived Preflight: %08X\n"
+                        "Installer Status: not linked; preflight NOT ATTEMPTED\n"
+                        "Backend candidate: Export Trampoline (preparation only)\n"
+                        "Trampoline Prepared: %08X Original Published: %08X\n"
+                        "Thread Safety: unverified Commit Attempted: %u Active: %u\nBlocked Reason "
+                        "(MOD): %08X\n",
+                        egl.guardStatus,
+                        egl.guardStatus == UINT32_MAX ? "not recorded" : "executed", hook.preflight,
+                        hook.trampoline, hook.publish, hook.commitAttempted, hook.active,
+                        hook.blockedReason);
+#else
             std::printf("Installer Status (MOD): %u Selected Hook Backend: %u\n"
                         "Preflight: %08X Original Prepared: %08X\n"
                         "Thread Safety: %s Commit Attempted: %u\n"
@@ -297,6 +356,7 @@ int main() {
                         hook.preflight, hook.trampoline,
                         hook.quiescenceVerified ? "verified" : "unverified", hook.commitAttempted,
                         hook.blockedReason, hook.active);
+#endif
 #endif
             std::printf("Hook attempted: %u result: %08X\nGuard: %u blocked reason: %u\n"
                         "Callback: %llu Original calls/returns: %llu / %llu\n",
@@ -341,6 +401,9 @@ int main() {
             std::printf("Snapshot status (MOD): %08X\nHook is disabled in this build\nA: summary "
                         "L: details B: back\n",
                         egl.snapshotStatus);
+#if YW1_COMPANION_EGL_GOT_PROBE
+            std::printf("R: EGL GOT Probe\n");
+#endif
         };
 #endif
         std::size_t page = 0;
@@ -362,6 +425,12 @@ int main() {
                     break;
                 }
                 if (down & HidNpadButton_A) {
+#if YW1_COMPANION_EGL_GOT_PROBE
+                    if (gotPage) {
+                        details = true;
+                    }
+                    gotPage = false;
+#endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
                     if (eglPage) {
                         details = true;
@@ -376,6 +445,19 @@ int main() {
                         summary();
                     }
                 }
+#if YW1_COMPANION_EGL_GOT_PROBE
+                else if (gotPage) {
+                    if (down & HidNpadButton_L) {
+                        gotPage = false;
+                        eglPage = true;
+                        showEgl();
+                    }
+                } else if (eglPage && (down & HidNpadButton_R)) {
+                    eglPage = false;
+                    gotPage = true;
+                    showGot();
+                }
+#endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
                 else if (eglPage && (down & HidNpadButton_L)) {
                     eglPage = false;
