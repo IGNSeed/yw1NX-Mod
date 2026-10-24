@@ -4,8 +4,12 @@ execute_process(COMMAND "${NM}" -S --defined-only "${ELF}"
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "Cannot inspect the diagnostic ELF")
 endif()
-foreach(name IN ITEMS yw1_module_identity yw1_module_diagnostics_state
+set(diagnostic_symbols yw1_module_identity yw1_module_diagnostics_state
     yw1_module_log_header yw1_module_log_words)
+if(EGL_DIAGNOSTIC)
+    list(APPEND diagnostic_symbols yw1_egl_diagnostics)
+endif()
+foreach(name IN LISTS diagnostic_symbols)
     string(REGEX MATCH "([0-9a-fA-F]+) ([0-9a-fA-F]+) [A-Za-z] ${name}(\n|$)" row "${symbols}")
     if(NOT row)
         message(FATAL_ERROR "Missing diagnostic symbol ${name}")
@@ -33,3 +37,6 @@ file(WRITE "${OUTPUT}" "#pragma once\n#include <cstdint>\nnamespace yw1::compani
     "inline constexpr std::uint64_t kStateSize=${yw1_module_diagnostics_state_size};\n"
     "inline constexpr std::uint64_t kExportHeaderOffset=${yw1_module_log_header_offset};\n"
     "inline constexpr std::uint64_t kExportDataOffset=${yw1_module_log_words_offset};\n}\n")
+if(EGL_DIAGNOSTIC)
+    file(APPEND "${OUTPUT}" "namespace yw1::companion { inline constexpr std::uint64_t kEglOffset=${yw1_egl_diagnostics_offset}; }\n")
+endif()

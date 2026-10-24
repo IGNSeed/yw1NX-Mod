@@ -8,7 +8,10 @@ namespace yw1::diagnostics {
 constexpr std::uint64_t kIdentityMagic = 0x3544494D315759ULL;
 constexpr std::uint64_t kStateMagic = 0x3554534D315759ULL;
 constexpr std::uint64_t kTitleId = 0x0100C0000CEEA000;
-#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+constexpr std::uint64_t kBuildTag = 0xB002;
+constexpr char kDiagnosticVersion[] = "B0.2";
+#elif YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
 constexpr std::uint64_t kBuildTag = 0xB0017;
 constexpr char kDiagnosticVersion[] = "B0.1.7";
 #else
@@ -65,7 +68,7 @@ inline bool contains(std::uint64_t base, std::uint64_t size, std::uint64_t addre
            address - base <= size && length <= size - (address - base);
 }
 
-inline bool validIdentity(const ModuleIdentity& identity) {
+inline bool validIdentity(const ModuleIdentity &identity) {
     if (identity.magic != kIdentityMagic || identity.version != kAbiVersion ||
         identity.size != sizeof(ModuleIdentity) || identity.titleId != kTitleId ||
         identity.buildTag != kBuildTag) {
@@ -79,7 +82,7 @@ inline bool validIdentity(const ModuleIdentity& identity) {
     return true;
 }
 
-inline bool validSnapshot(const ModuleSnapshot& state) {
+inline bool validSnapshot(const ModuleSnapshot &state) {
     if (!(state.magic == kStateMagic && state.version == kAbiVersion &&
           state.size == sizeof(ModuleSnapshot) && state.titleId == kTitleId &&
           state.buildTag == kBuildTag && state.ipcQuarantined <= 1 &&

@@ -10,7 +10,7 @@ constinit Result fsResult = yw1::companion::kNotAttempted;
 constinit yw1::companion::Report report;
 constinit yw1::companion::BootstrapLog bootstrapLog;
 
-bool consoleReady(const PrintConsole* screen) {
+bool consoleReady(const PrintConsole *screen) {
     return screen != nullptr && screen->consoleInitialised && screen->renderer != nullptr &&
            screen->renderer->drawChar != nullptr && screen->renderer->scrollWindow != nullptr &&
            screen->renderer->flushAndSwap != nullptr && screen->renderer->deinit != nullptr;
@@ -19,7 +19,7 @@ bool consoleReady(const PrintConsole* screen) {
 // 標準__appInitのWindow準備を、abortする内部entryを使わず実Resultで実行する。
 class WindowSession {
   public:
-    Result initialize(yw1::companion::Report& log) {
+    Result initialize(yw1::companion::Report &log) {
         auto rc = log.result("vi_initialize_result", viInitialize(ViServiceType_Default));
         if (rc != 0) {
             return rc;
@@ -51,7 +51,7 @@ class WindowSession {
         windowReady_ = true;
         return log.result("nwindow_dimensions_result", nwindowSetDimensions(window_, 1280, 720));
     }
-    void close(yw1::companion::Report& log) {
+    void close(yw1::companion::Report &log) {
         if (windowReady_) {
             nwindowClose(window_);
             windowReady_ = false;
@@ -75,7 +75,7 @@ class WindowSession {
   private:
     ViDisplay display_{};
     ViLayer layer_{};
-    NWindow* window_ = nullptr;
+    NWindow *window_ = nullptr;
     bool viReady_ = false;
     bool displayReady_ = false;
     bool layerReady_ = false;
@@ -83,7 +83,7 @@ class WindowSession {
 };
 
 // 保存失敗時も、全Resultを画面から回収できるように固定幅でページ分割する。
-std::size_t showDetails(PrintConsole* screen, std::size_t page) {
+std::size_t showDetails(PrintConsole *screen, std::size_t page) {
     if (!consoleReady(screen)) {
         return 0;
     }
@@ -109,18 +109,17 @@ std::size_t showDetails(PrintConsole* screen, std::size_t page) {
     }
     return row / 30;
 }
-}
-
-extern "C" Result __real_framebufferCreate(Framebuffer*, NWindow*, u32, u32, u32, u32);
-extern "C" Result __real_framebufferMakeLinear(Framebuffer*);
+} // 無名名前空間
+extern "C" Result __real_framebufferCreate(Framebuffer *, NWindow *, u32, u32, u32, u32);
+extern "C" Result __real_framebufferMakeLinear(Framebuffer *);
 
 // NRO自身の呼出しだけを包み、SDKの実Resultをそのまま記録・返却する。
-extern "C" Result __wrap_framebufferCreate(Framebuffer* fb, NWindow* window, u32 width, u32 height,
+extern "C" Result __wrap_framebufferCreate(Framebuffer *fb, NWindow *window, u32 width, u32 height,
                                            u32 format, u32 count) {
     return report.result("framebuffer_create_result",
                          __real_framebufferCreate(fb, window, width, height, format, count));
 }
-extern "C" Result __wrap_framebufferMakeLinear(Framebuffer* fb) {
+extern "C" Result __wrap_framebufferMakeLinear(Framebuffer *fb) {
     return report.result("framebuffer_linear_result", __real_framebufferMakeLinear(fb));
 }
 
@@ -180,13 +179,13 @@ int main() {
                   observation.moduleDetected, observation.dtInitReached, observation.result);
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
-        const auto& state = observation.snapshot;
+        const auto &state = observation.snapshot;
         writerActive = state.writerTerminal != 1 && state.writerTerminal != 3;
     }
     FileOutcome file;
     std::size_t savedThrough = 0;
     // UIの初期化前に実診断結果を保存する。以後のcheckpointも固定回数だけ追記する。
-    const auto persist = [&](const char* phase) {
+    const auto persist = [&](const char *phase) {
         report.append("nro_phase=%s first_anomaly_result=0x%08X\n", phase, report.firstAnomaly);
         if (fsResult == 0 && !writerActive) {
             file = saveReport(report, savedThrough);
@@ -208,7 +207,7 @@ int main() {
     }
     persist("ui_init_begin");
     WindowSession window;
-    PrintConsole* screen = nullptr;
+    PrintConsole *screen = nullptr;
     bool consoleAttempted = false;
     if (appletResult == 0) {
         if (window.initialize(report) == 0) {
@@ -273,6 +272,66 @@ int main() {
         summary();
         bool updateRecorded = false;
         bool details = false;
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+        bool eglPage = false;
+        const auto showEgl = [&] {
+            if (!consoleReady(screen)) {
+                return;
+            }
+            consoleClear();
+            std::printf("EGL / OpenGL - game process observation\nNRO VI/Framebuffer is separate\n"
+                        "Read result: %08X\n",
+                        observation.eglReadResult);
+            if (observation.eglReadResult != 0) {
+                std::printf("Game EGL values: unknown\n");
+                return;
+            }
+            const auto &egl = observation.egl;
+            std::printf("Hook attempted: %u result: %08X\nGuard: %u blocked reason: %u\n"
+                        "Callback: %llu Original calls/returns: %llu / %llu\n",
+                        egl.installAttempted, egl.installResult, egl.guardStatus, egl.blockedReason,
+                        static_cast<unsigned long long>(egl.callbackCount),
+                        static_cast<unsigned long long>(egl.originalCalls),
+                        static_cast<unsigned long long>(egl.originalReturns));
+            if (egl.bindingKnown) {
+                std::printf("API: %04X Context: %s Thread: %llu\n", egl.api,
+                            egl.context ? "present" : "none",
+                            static_cast<unsigned long long>(egl.thread));
+            } else {
+                std::printf("Current API / Context / Render Thread: unknown\n");
+            }
+            if (egl.queryFlags & yw1::diagnostics::kStringsIssued) {
+                std::printf("GL: %.80s\nVendor: %.80s\nRenderer: %.80s\n", egl.version, egl.vendor,
+                            egl.renderer);
+            } else {
+                std::printf("GL / Vendor / Renderer: unknown\n");
+            }
+            if (egl.queryFlags & yw1::diagnostics::kGlslIssued) {
+                std::printf("GLSL: %.80s\n", egl.glsl);
+            } else {
+                std::printf("GLSL: unknown\n");
+            }
+            if (egl.queryFlags & yw1::diagnostics::kViewportIssued) {
+                std::printf("Viewport: %d,%d,%d,%d\n", egl.viewport[0], egl.viewport[1],
+                            egl.viewport[2], egl.viewport[3]);
+            } else {
+                std::printf("Viewport: unknown\n");
+            }
+            if (egl.queryFlags & yw1::diagnostics::kFramebufferIssued) {
+                std::printf("Framebuffer: %d\n", egl.framebuffer);
+            } else {
+                std::printf("Framebuffer: unknown\n");
+            }
+            if (egl.queryFlags & yw1::diagnostics::kProgramIssued) {
+                std::printf("Program: %d\n", egl.program);
+            } else {
+                std::printf("Program: unknown\n");
+            }
+            std::printf("Snapshot status (MOD): %08X\nHook is disabled in this build\nA: summary "
+                        "L: details B: back\n",
+                        egl.snapshotStatus);
+        };
+#endif
         std::size_t page = 0;
         std::size_t lastPage = 0;
         PadState pad{};
@@ -292,6 +351,12 @@ int main() {
                     break;
                 }
                 if (down & HidNpadButton_A) {
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+                    if (eglPage) {
+                        details = true;
+                    }
+                    eglPage = false;
+#endif
                     details = !details;
                     page = 0;
                     if (details) {
@@ -299,7 +364,18 @@ int main() {
                     } else {
                         summary();
                     }
-                } else if (details && (down & HidNpadButton_L) && page != 0) {
+                }
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+                else if (eglPage && (down & HidNpadButton_L)) {
+                    eglPage = false;
+                    details = true;
+                    lastPage = showDetails(screen, page);
+                } else if (details && !eglPage && (down & HidNpadButton_R) && page == lastPage) {
+                    eglPage = true;
+                    showEgl();
+                }
+#endif
+                else if (details && (down & HidNpadButton_L) && page != 0) {
                     lastPage = showDetails(screen, --page);
                 } else if (details && (down & HidNpadButton_R) && page < lastPage) {
                     lastPage = showDetails(screen, ++page);

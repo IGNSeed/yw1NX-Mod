@@ -6,7 +6,7 @@
 
 namespace yw1::diagnostics {
 
-using EglHandle = void*;
+using EglHandle = void *;
 using GenericProc = void (*)();
 // EGL公式ABIの32ビット戻り値を保持する。B.0.1にはHookを接続しない。
 using EglBoolean = unsigned int;
@@ -17,17 +17,21 @@ struct EglQueryApi {
     EglHandle (*getCurrentContext)();
     EglHandle (*getCurrentDisplay)();
     EglHandle (*getCurrentSurface)(std::int32_t);
-    GenericProc (*getProcAddress)(const char*);
+    GenericProc (*getProcAddress)(const char *);
     bool (*isExecutable)(std::uintptr_t);
+    std::uint32_t (*queryApi)() = nullptr;
 };
 
-enum class SnapshotStatus {
+enum class SnapshotStatus : std::uint32_t {
     MissingEglFunction,
     NoContext,
     MissingGlFunction,
     InvalidVersion,
     UnsupportedApi,
-    QueriesIssued
+    QueriesIssued,
+    BindingChanged,
+    InconsistentVersion,
+    NotAttempted = 0xFFFFFFFFu
 };
 
 struct EglSnapshot {
@@ -51,13 +55,16 @@ struct EglSnapshot {
     bool profileQueried = false;
     bool framebufferQueried = false;
     bool programQueried = false;
+    std::uint32_t currentApi = 0;
+    bool apiQueried = false;
+    bool versionTruncated = false;
 };
 
 // B.0.2用の未接続コレクター。呼出元が対象DB/ABI・同一current contextとthreadを保証する。
 // isExecutableは照合済みモジュールの実行範囲を検証する契約で、単なる非null判定ではない。
 // void型のGL queryは発行したことだけを記録し、エラーなしの成功を推測しない。
-EglSnapshot captureEglSnapshot(const EglQueryApi& api, std::uint64_t threadId,
+EglSnapshot captureEglSnapshot(const EglQueryApi &api, std::uint64_t threadId,
                                std::uint64_t swapCount);
-bool sameEglBinding(const EglSnapshot& left, const EglSnapshot& right);
+bool sameEglBinding(const EglSnapshot &left, const EglSnapshot &right);
 
 } // 名前空間 yw1::diagnostics

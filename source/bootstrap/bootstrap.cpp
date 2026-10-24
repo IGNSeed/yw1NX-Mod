@@ -9,10 +9,15 @@
 #if YW1_BOOTSTRAP_SD_LOGGING
 #include "logging/sd_writer.hpp"
 #endif
-#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
+#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC
 #include "bootstrap/exlaunch_preflight.hpp"
 #include "diagnostics/log_export.hpp"
 extern "C" char __module_start;
+#endif
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+namespace yw1::bootstrap {
+void runEglDiagnostic();
+}
 #endif
 
 #if YW1_BOOTSTRAP_FS_DIAGNOSTIC
@@ -22,8 +27,8 @@ void runFsDiagnostic();
 #endif
 
 extern "C" void exl_module_init();
-extern "C" Result __real_svcMapProcessMemory(void*, Handle, u64, u64);
-extern "C" Result __real_svcUnmapProcessMemory(void*, Handle, u64, u64);
+extern "C" Result __real_svcMapProcessMemory(void *, Handle, u64, u64);
+extern "C" Result __real_svcUnmapProcessMemory(void *, Handle, u64, u64);
 
 namespace {
 
@@ -39,7 +44,7 @@ template <std::size_t Size> void writeLog(const char (&message)[Size]) {
     static_cast<void>(svcOutputDebugString(message, Size - 1));
 }
 
-void writeResult(const char* label, std::size_t length, Result result) {
+void writeResult(const char *label, std::size_t length, Result result) {
 #if YW1_BOOTSTRAP_SD_LOGGING || YW1_BOOTSTRAP_MEMORY_LOG
     static_cast<void>(yw1::logging::memoryLog().appendResult(label, length, result));
 #endif
@@ -53,7 +58,6 @@ void writeResult(const char* label, std::size_t length, Result result) {
 }
 
 } // 無名名前空間
-
 extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     if (initEntered.exchange(true)) {
         return;
@@ -61,14 +65,18 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
     yw1::logging::recordProgress(yw1::logging::Stage::InitEnter, 0);
 #endif
-#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
+#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC
     using namespace yw1::logging;
-    auto& state = yw1::diagnostics::yw1_module_diagnostics_state;
+    auto &state = yw1::diagnostics::yw1_module_diagnostics_state;
     yw1::diagnostics::setExportBootToken(svcGetSystemTick());
     state.writerPolicy.store(2, std::memory_order_release);
     // Writerをリンクしないprofileなので、exlaunch完了とは独立に外部回収を許可する。
     recordWriterTerminal(3);
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+    writeLog("\n=== YW1 B0.2 boot / EGL prerequisite diagnostics ===\nsource=module-bootstrap\n");
+#else
     writeLog("\n=== YW1 B0.1.7 boot / exlaunch verification ===\nsource=module-bootstrap\n");
+#endif
     writeLog("[YW1] dt_init_enter\n[YW1] direct_fs_writer=disabled\n");
     // すべての拒否経路でWriter未使用の終端を公開し、外部回収を可能にする。
     const auto finish = [] {
@@ -159,20 +167,23 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
 #endif
 }
 
-extern "C" void exl_main(void*, void*) {
+extern "C" void exl_main(void *, void *) {
     if (!mainEntered.exchange(true)) {
 #if YW1_BOOTSTRAP_SD_LOGGING || YW1_BOOTSTRAP_MEMORY_LOG
         yw1::logging::recordProgress(yw1::logging::Stage::ExlMain, 0);
 #endif
-#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
+#if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC
         writeLog("[YW1] exl_main_reached\n");
+#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+        yw1::bootstrap::runEglDiagnostic();
+#endif
 #else
         writeLog("[YW1 B0.1] exl_main_reached; no hooks, rendering, or input changes\n");
 #endif
     }
 }
 
-extern "C" Result __wrap_svcMapProcessMemory(void* destination, Handle process, u64 source,
+extern "C" Result __wrap_svcMapProcessMemory(void *destination, Handle process, u64 source,
                                              u64 size) {
     // Module内のリンク時ラップだけで、ゲームのSVCや命令を書き換えない。
     writeLog("[YW1 B0.1] RwPages map begin\n");
@@ -188,7 +199,7 @@ extern "C" Result __wrap_svcMapProcessMemory(void* destination, Handle process, 
     return result;
 }
 
-extern "C" Result __wrap_svcUnmapProcessMemory(void* destination, Handle process, u64 source,
+extern "C" Result __wrap_svcUnmapProcessMemory(void *destination, Handle process, u64 source,
                                                u64 size) {
     const Result result = __real_svcUnmapProcessMemory(destination, process, source, size);
 #if YW1_BOOTSTRAP_SD_LOGGING || YW1_BOOTSTRAP_MEMORY_LOG

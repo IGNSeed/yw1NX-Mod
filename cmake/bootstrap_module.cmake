@@ -61,7 +61,7 @@ add_executable(yw1_bootstrap
     "${PROJECT_SOURCE_DIR}/source/bootstrap/module_memory.cpp"
     "${PROJECT_SOURCE_DIR}/source/bootstrap/process_handle.cpp")
 set_target_properties(yw1_bootstrap PROPERTIES SUFFIX ".elf")
-if(YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
+if(YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC OR YW1_BOOTSTRAP_EGL_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE "${PROJECT_SOURCE_DIR}/source/logging/memory_log.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_MEMORY_LOG=1)
     target_compile_options(yw1_bootstrap PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-fstack-usage>")
@@ -78,6 +78,13 @@ if(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
         "${PROJECT_SOURCE_DIR}/source/bootstrap/exlaunch_preflight.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC=1)
+endif()
+if(YW1_BOOTSTRAP_EGL_DIAGNOSTIC)
+    target_sources(yw1_bootstrap PRIVATE source/bootstrap/exlaunch_preflight.cpp
+        source/bootstrap/egl_diagnostic.cpp source/diagnostics/egl_wire.cpp)
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_EGL_DIAGNOSTIC=1)
+    target_link_libraries(yw1_bootstrap PRIVATE yw1nx_foundation)
+    target_link_options(yw1_bootstrap PRIVATE -Wl,--undefined=yw1_egl_diagnostics)
 endif()
 if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
@@ -134,6 +141,7 @@ if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
         COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}"
             "-DELF=$<TARGET_FILE:yw1_bootstrap>"
             "-DNSO=${CMAKE_CURRENT_BINARY_DIR}/yw1_bootstrap.nso"
+            "-DEGL_DIAGNOSTIC=${YW1_BOOTSTRAP_EGL_DIAGNOSTIC}"
             "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/diagnostic_target.hpp"
             -P "${PROJECT_SOURCE_DIR}/cmake/diagnostic_target.cmake"
         VERBATIM)

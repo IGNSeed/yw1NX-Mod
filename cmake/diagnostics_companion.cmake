@@ -14,6 +14,10 @@ if(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
     target_compile_definitions(yw1_diagnostics PRIVATE YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC=1)
     set(yw1_diagnostic_version "B0.1.7")
 endif()
+if(YW1_BOOTSTRAP_EGL_DIAGNOSTIC)
+    target_compile_definitions(yw1_diagnostics PRIVATE YW1_BOOTSTRAP_EGL_DIAGNOSTIC=1)
+    set(yw1_diagnostic_version "B0.2")
+endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)
