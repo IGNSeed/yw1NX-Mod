@@ -3,6 +3,9 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+#include "target_memory.hpp"
+#endif
 
 namespace yw1::companion {
 struct ModuleRecord;
@@ -38,6 +41,9 @@ struct GotObservation {
     std::uint32_t pagePermission = UINT32_MAX, targetPermission = UINT32_MAX;
     GotTarget target = GotTarget::Unknown;
     GotBinding binding = GotBinding::Unknown;
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+    TargetMemoryObservation memory{};
+#endif
 };
 
 // 完全ID・module・symbol・page全体の境界を確認する。ここではメモリを読まない。

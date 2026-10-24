@@ -276,6 +276,9 @@ int main() {
         bool details = false;
 #if YW1_COMPANION_EGL_GOT_PROBE
         bool gotPage = false;
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+        bool targetMemoryPage = false;
+#endif
         const auto showGot = [&] {
             if (!consoleReady(screen)) {
                 return;
@@ -285,9 +288,9 @@ int main() {
             const auto tri = [](int value) {
                 return value < 0 ? "unknown" : (value ? "yes" : "no");
             };
-            std::printf("EGL GOT Probe B0.2.2\nRead-only game process snapshot from Album\n"
+            std::printf("EGL GOT Probe %s\nRead-only game process snapshot from Album\n"
                         "Main ID: %s PID: %llu Read Result: %08X\nSlot Offset: 0x8B4398\n",
-                        got.mainVerified ? "verified" : "not verified",
+                        kCompanionVersion, got.mainVerified ? "verified" : "not verified",
                         static_cast<unsigned long long>(observation.pid), got.result);
             if (got.valueKnown) {
                 std::printf("Slot / Companion Value: %016llX\n",
@@ -317,7 +320,62 @@ int main() {
                         "Album snapshot does not prove stability during play.\n"
                         "A: summary L: EGL/OpenGL B: back\n",
                         gotBindingName(got.binding));
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+            std::printf("R: Target Memory\n");
+#endif
         };
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+        const auto showTargetMemory = [&] {
+            if (!consoleReady(screen)) {
+                return;
+            }
+            consoleClear();
+            const auto& got = observation.got;
+            const auto& memory = got.memory;
+            std::printf("EGL GOT Target Memory B0.2.3\nSource: game process  Read-only: yes\n"
+                        "GOT Read: %08X Target Query: %08X\nQuery attempted: %s\n",
+                        got.readResult, memory.queryResult, targetBoolean(memory.queryAttempted));
+            if (got.valueKnown) {
+                const auto relative = relativeAddress(got.slotValue, got.mainBase);
+                std::printf("Target: %016llX\nRelative to Main: %s0x%llX\n",
+                            static_cast<unsigned long long>(got.slotValue),
+                            relative.negative ? "-" : "+",
+                            static_cast<unsigned long long>(relative.magnitude));
+            } else {
+                std::printf("Target / Relative to Main: unknown\n");
+            }
+            if (memory.infoReturned) {
+                const auto& region = memory.region;
+                const auto relative = relativeAddress(region.base, got.mainBase);
+                std::printf("Region Base: %016llX Size: %llX\nRegion relative: %s0x%llX\n"
+                            "Memory Type: %08X %s\nAttributes: %08X (known: %s)\n"
+                            "Permission: %08X (known: %s)\nIPC ref: %u Device ref: %u\n",
+                            static_cast<unsigned long long>(region.base),
+                            static_cast<unsigned long long>(region.size),
+                            relative.negative ? "-" : "+",
+                            static_cast<unsigned long long>(relative.magnitude), region.type,
+                            targetMemoryTypeName(region.type), region.attributes,
+                            targetBoolean(memory.attributesKnown), region.permission,
+                            targetBoolean(memory.permissionKnown), region.ipcRefcount,
+                            region.deviceRefcount);
+            } else {
+                std::printf("Region Base / Size / Relative: unknown\nMemory Type: unknown\n"
+                            "Attributes / Permission / Refcounts: unknown\n");
+            }
+            std::printf("Region Valid: %s Contains Pointer: %s\nMapped: %s\n"
+                        "Readable: %s Writable: %s Executable: %s\nValidation: %08X\n"
+                        "Code Read: not attempted FFFFFFFF\nCode bytes: unknown\n"
+                        "Code snapshot disabled pending mapping/lifetime evidence.\n"
+                        "Executable page does not verify a function or owner.\n"
+                        "Hook Active: no GOT Modification: disabled\n"
+                        "Album snapshot does not prove stability during play.\n"
+                        "A: summary L: GOT Probe B: back\n",
+                        targetBoolean(memory.infoReturned ? (memory.regionValid ? 1 : 0) : -1),
+                        targetBoolean(memory.containsPointer), targetBoolean(memory.mapped),
+                        targetBoolean(memory.readable), targetBoolean(memory.writable),
+                        targetBoolean(memory.executable), memory.validationResult);
+        };
+#endif
 #endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
         bool eglPage = false;
@@ -426,6 +484,12 @@ int main() {
                 }
                 if (down & HidNpadButton_A) {
 #if YW1_COMPANION_EGL_GOT_PROBE
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+                    if (targetMemoryPage) {
+                        details = true;
+                    }
+                    targetMemoryPage = false;
+#endif
                     if (gotPage) {
                         details = true;
                     }
@@ -446,6 +510,19 @@ int main() {
                     }
                 }
 #if YW1_COMPANION_EGL_GOT_PROBE
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+                else if (targetMemoryPage) {
+                    if (down & HidNpadButton_L) {
+                        targetMemoryPage = false;
+                        gotPage = true;
+                        showGot();
+                    }
+                } else if (gotPage && (down & HidNpadButton_R)) {
+                    gotPage = false;
+                    targetMemoryPage = true;
+                    showTargetMemory();
+                }
+#endif
                 else if (gotPage) {
                     if (down & HidNpadButton_L) {
                         gotPage = false;

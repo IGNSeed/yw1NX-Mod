@@ -23,6 +23,10 @@ option(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC "Verify exlaunch initialization without
 option(YW1_BOOTSTRAP_EGL_DIAGNOSTIC "Inspect EGL hook prerequisites without installing a hook" OFF)
 option(YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC "Report blocked safe-hook prerequisites without installing" OFF)
 option(YW1_COMPANION_EGL_GOT_PROBE "Build a read-only GOT companion for the unchanged B021 module" OFF)
+option(YW1_COMPANION_EGL_TARGET_MEMORY "Query only the captured GOT target in the game process" OFF)
+if(YW1_COMPANION_EGL_TARGET_MEMORY AND NOT YW1_COMPANION_EGL_GOT_PROBE)
+    message(FATAL_ERROR "Target memory diagnostics require the read-only GOT companion")
+endif()
 option(YW1_EGL_HOOK_ENABLED "Enable the EGL hook after installer safety verification" OFF)
 if(YW1_COMPANION_EGL_GOT_PROBE AND
     (YW1_BUILD_BOOTSTRAP OR NOT YW1_BUILD_DIAGNOSTICS_COMPANION OR

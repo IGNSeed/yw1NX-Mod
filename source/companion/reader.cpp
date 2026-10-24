@@ -96,6 +96,65 @@ class BoundReader {
 
 #if YW1_COMPANION_EGL_GOT_PROBE
 static_assert(sizeof(MemoryInfo) == 40 && offsetof(MemoryInfo, perm) == 24);
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+static_assert(offsetof(MemoryInfo, addr) == 0 && offsetof(MemoryInfo, size) == 8 &&
+              offsetof(MemoryInfo, type) == 16 && offsetof(MemoryInfo, attr) == 20 &&
+              offsetof(MemoryInfo, ipc_refcount) == 28 &&
+              offsetof(MemoryInfo, device_refcount) == 32);
+static_assert(MemType_Unmapped == 0 && MemType_Insecure == 0x17 &&
+              MemAttr_IsPermissionLocked == 0x10 && Perm_R == 1 && Perm_W == 2 && Perm_X == 4);
+
+void inspectTargetMemory(Handle process, std::span<const ModuleRecord> modules,
+                         GotObservation& output) {
+    auto& memory = output.memory;
+    // 呼出し元はMain完全ID・PID/Title・handleを検証し、GOT読取とUnmapに成功した後だけ。
+    if (!validTargetModules(modules) || output.slotValue == 0) {
+        memory.validationResult = kInvalidData;
+        return;
+    }
+    if (!envIsSyscallHinted(0x76) || !envIsSyscallHinted(0x29)) {
+        memory.validationResult = kUnavailable;
+        return;
+    }
+    // 固定39bit等を仮定せず、同じgame handleからASLR対象領域の範囲を取得する。
+    memory.addressBaseResult =
+        svcGetInfo(&memory.addressSpaceBase, InfoType_AslrRegionAddress, process, 0);
+    memory.addressSizeResult =
+        svcGetInfo(&memory.addressSpaceSize, InfoType_AslrRegionSize, process, 0);
+    if (memory.addressBaseResult != 0 || memory.addressSizeResult != 0) {
+        memory.validationResult =
+            memory.addressBaseResult != 0 ? memory.addressBaseResult : memory.addressSizeResult;
+        return;
+    }
+    if (!validTargetAddress(output.slotValue, memory.addressSpaceBase, memory.addressSpaceSize)) {
+        memory.validationResult = kInvalidData;
+        return;
+    }
+    MemoryInfo info{};
+    u32 pageInfo = 0;
+    memory.queryAttempted = true;
+    memory.queryResult = svcQueryProcessMemory(&info, &pageInfo, process, output.slotValue);
+    output.targetQueryResult = memory.queryResult;
+    if (memory.queryResult != 0) {
+        return;
+    }
+    memory.infoReturned = true;
+    memory.region = {info.addr, info.size,         info.type,           info.attr,
+                     info.perm, info.ipc_refcount, info.device_refcount};
+    validateTargetRegion(output.slotValue, memory);
+    output.executable = memory.executable;
+    if (memory.regionValid && memory.permissionKnown) {
+        output.targetPermission = info.perm;
+    }
+    if (output.executable == 0) {
+        output.binding = GotBinding::NonExecutable;
+    } else if (output.executable == 1 && output.binding == GotBinding::Unknown &&
+               output.slotValue % 4 == 0) {
+        output.binding = GotBinding::ExecutableCandidate;
+    }
+    // 既知module外は、X bitが判明しても所有者や関数としての正当性を確定しない。
+}
+#endif
 bool validGameInfo(const MemoryInfo& info, std::uint64_t address, std::size_t size) {
     return info.addr % 4096 == 0 && info.size % 4096 == 0 && (info.perm & ~7u) == 0 &&
            diagnostics::contains(info.addr, info.size, address, size);
@@ -139,6 +198,9 @@ void inspectGot(BoundReader& reader, Handle process, std::span<const ModuleRecor
     output.slotValue = value;
     output.valueKnown = true;
     classifyGot(modules, output);
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+    inspectTargetMemory(process, modules, output);
+#else
     if (output.normalizedKnown && envIsSyscallHinted(0x76)) {
         MemoryInfo info{};
         u32 pageInfo = 0;
@@ -155,6 +217,7 @@ void inspectGot(BoundReader& reader, Handle process, std::span<const ModuleRecor
             }
         }
     }
+#endif
 }
 #endif
 

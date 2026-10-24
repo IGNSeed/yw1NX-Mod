@@ -197,13 +197,13 @@ void appendGotReport(Report& report, const Observation& observation,
     const auto boolean = [](int value) {
         return value < 0 ? "unknown" : (value ? "true" : "false");
     };
-    report.append("\n=== YW1 EGL GOT Probe B0.2.2 ===\nsource=companion-nro\nmode=read-only\n"
+    report.append("\n=== YW1 EGL GOT Probe %s ===\nsource=companion-nro\nmode=read-only\n"
                   "observation_source=companion-nro observation_stage=album_snapshot\n"
                   "album_snapshot_is_not_continuous_gameplay_observation=true\n"
                   "snapshot_consistency=separate_loader_slot_and_page_observations\n"
                   "application_pid=%llu got_probe_attempted=%u main_build_id_verified=%s\n",
-                  static_cast<unsigned long long>(observation.pid), got.attempted,
-                  boolean(got.mainVerified ? 1 : 0));
+                  kCompanionVersion, static_cast<unsigned long long>(observation.pid),
+                  got.attempted, boolean(got.mainVerified ? 1 : 0));
     report.result("got_probe_result",
                   got.result == kNotAttempted ? observation.result : got.result);
     report.result("got_slot_read_result", got.readResult);
@@ -266,5 +266,8 @@ void appendGotReport(Report& report, const Observation& observation,
     }
     report.append("bootstrap_got_value=not_collected_module_unchanged\n"
                   "got_hook_install_attempted=0 got_modification=disabled\n");
+#if YW1_COMPANION_EGL_TARGET_MEMORY
+    appendTargetMemoryReport(report, observation);
+#endif
 }
 } // 名前空間 yw1::companion
