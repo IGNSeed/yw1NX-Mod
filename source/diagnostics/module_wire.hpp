@@ -8,7 +8,7 @@ namespace yw1::diagnostics {
 constexpr std::uint64_t kIdentityMagic = 0x3544494D315759ULL;
 constexpr std::uint64_t kStateMagic = 0x3554534D315759ULL;
 constexpr std::uint64_t kTitleId = 0x0100C0000CEEA000;
-constexpr std::uint64_t kBuildTag = 0xB0015;
+constexpr std::uint64_t kBuildTag = 0xB0016;
 constexpr std::uint32_t kAbiVersion = 1;
 constexpr std::size_t kStageCount = 64;
 constexpr std::uint64_t kPresent = 1ULL << 32;
@@ -39,11 +39,16 @@ struct alignas(64) ModuleSnapshot {
     std::uint32_t ipcQuarantined;
     std::uint64_t results[kStageCount];
     std::uint64_t firstNonzeroByStage[kStageCount];
+    std::uint64_t smConnectAttempts;
+    // 0=未確定/実行中、1=保存処理終了、2=IPC隔離、3=Writer未実行で終了。
+    std::uint64_t writerTerminal;
 };
 
 static_assert(sizeof(ModuleIdentity) == 64);
 static_assert(sizeof(ModuleSnapshot) == 1152);
 static_assert(offsetof(ModuleSnapshot, results) == 72);
+static_assert(offsetof(ModuleSnapshot, smConnectAttempts) == 1096);
+static_assert(offsetof(ModuleSnapshot, writerTerminal) == 1104);
 
 inline bool contains(std::uint64_t base, std::uint64_t size, std::uint64_t address,
                      std::uint64_t length) {
@@ -69,6 +74,7 @@ inline bool validSnapshot(const ModuleSnapshot& state) {
     if (!(state.magic == kStateMagic && state.version == kAbiVersion &&
           state.size == sizeof(ModuleSnapshot) && state.titleId == kTitleId &&
           state.buildTag == kBuildTag && state.ipcQuarantined <= 1 &&
+          state.smConnectAttempts <= 2 && state.writerTerminal <= 3 &&
           (state.latest >> 32) < kStageCount && (state.firstNonzero >> 32) < kStageCount &&
           (state.lastNonzero >> 32) < kStageCount)) {
         return false;

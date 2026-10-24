@@ -21,6 +21,7 @@ struct KernelApi {
     Result (*wait)(void*, Handle, std::uint64_t);
     Result (*close)(void*, Handle);
     std::uint64_t (*ticks)(void*);
+    void (*sleep)(void*, std::uint64_t) = nullptr;
 };
 
 struct IpcStorage {

@@ -1,4 +1,7 @@
 #include "memory_log.hpp"
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+#include "diagnostics/log_export.hpp"
+#endif
 
 namespace yw1::logging {
 namespace {
@@ -41,6 +44,12 @@ bool MemoryLog::append(const char* text, std::size_t size) {
     } else {
         dropped_.fetch_add(1, std::memory_order_relaxed);
     }
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    if (this == &memoryLog()) {
+        diagnostics::publishLogAppend(accepted ? text : nullptr, accepted ? size : 0,
+                                      dropped_.load(std::memory_order_relaxed), sealed_);
+    }
+#endif
     lock_.clear(std::memory_order_release);
     return accepted;
 }
@@ -57,6 +66,11 @@ bool MemoryLog::seal(LogView& view) {
     }
     sealed_ = true;
     view = {data_, used_};
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    if (this == &memoryLog()) {
+        diagnostics::publishLogAppend(nullptr, 0, dropped_.load(std::memory_order_relaxed), true);
+    }
+#endif
     lock_.clear(std::memory_order_release);
     return true;
 }

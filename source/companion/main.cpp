@@ -8,6 +8,7 @@ constinit Result appletResult = yw1::companion::kNotAttempted;
 constinit Result hidResult = yw1::companion::kNotAttempted;
 constinit Result fsResult = yw1::companion::kNotAttempted;
 constinit yw1::companion::Report report;
+constinit yw1::companion::BootstrapLog bootstrapLog;
 
 bool consoleReady(const PrintConsole* screen) {
     return screen != nullptr && screen->consoleInitialised && screen->renderer != nullptr &&
@@ -160,7 +161,7 @@ extern "C" void __appExit() {
 
 int main() {
     using namespace yw1::companion;
-    report.append("\n=== YW1 Diagnostics B0.1.5.1 ===\nsource=companion-nro\n"
+    report.append("\n=== YW1 Diagnostics B0.1.6 ===\nsource=companion-nro\n"
                   "title_id=0100C0000CEEA000\n");
     report.result("sm_startup_result", smResult);
     report.result("applet_startup_result", appletResult);
@@ -170,30 +171,40 @@ int main() {
     report.append("album_library_applet=%s\n", album ? "true" : "false");
     Observation observation;
     if (album && smResult == 0) {
-        observation = inspectTarget(report);
+        observation = inspectTarget(report, &bootstrapLog);
     } else {
         report.append("inspection_not_attempted=requires_album_library_applet\n");
     }
     report.append("module_detected=%d\ndt_init_reached=%d\ninspection_result=0x%08X\n",
                   observation.moduleDetected, observation.dtInitReached, observation.result);
-    bool writerActive = false;
+    bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
         const auto& state = observation.snapshot;
-        writerActive = state.ipcQuarantined != 0 ||
-                       (state.results[17] == yw1::diagnostics::kPresent && state.results[57] == 0 &&
-                        state.results[62] != (yw1::diagnostics::kPresent | 0xE002));
+        writerActive = state.writerTerminal != 1 && state.writerTerminal != 3;
     }
     FileOutcome file;
+    std::size_t savedThrough = 0;
     // UIの初期化前に実診断結果を保存する。以後のcheckpointも固定回数だけ追記する。
     const auto persist = [&](const char* phase) {
         report.append("nro_phase=%s first_anomaly_result=0x%08X\n", phase, report.firstAnomaly);
         if (fsResult == 0 && !writerActive) {
-            file = saveReport(report);
+            file = saveReport(report, savedThrough);
+            if (file.savedThrough != 0) {
+                savedThrough = file.savedThrough;
+            }
         } else {
             report.append("sd_save_not_attempted=%s\n",
                           writerActive ? "game_writer_active" : "fs_unavailable");
         }
     };
+    persist("bootstrap_export_begin");
+    std::uint32_t exportSaveResult = kNotAttempted;
+    if (bootstrapLog.readResult == 0 && fsResult == 0 && !writerActive) {
+        exportSaveResult = saveBootstrapLog(report, bootstrapLog);
+    } else {
+        report.append("bootstrap_export_not_saved read_result=0x%08X writer_active=%s\n",
+                      bootstrapLog.readResult, writerActive ? "true" : "false");
+    }
     persist("ui_init_begin");
     WindowSession window;
     PrintConsole* screen = nullptr;
@@ -220,7 +231,10 @@ int main() {
                 return;
             }
             consoleClear();
-            std::printf("YW1 Diagnostics B0.1.5.1\nsource=companion-nro\n\n");
+            std::printf("YW1 Diagnostics B0.1.6\nsource=companion-nro\n\n");
+            std::printf("Bootstrap read: %08X save: %08X duplicate skipped: %s\n",
+                        bootstrapLog.readResult, exportSaveResult,
+                        bootstrapLog.duplicate ? "yes" : "no");
             std::printf("Album mode: %s\nPID: %llu\nModules: %d\nModule: %d  DT_INIT: %d\n",
                         album ? "yes" : "NO - use Album",
                         static_cast<unsigned long long>(observation.pid), observation.moduleCount,

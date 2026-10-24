@@ -4,7 +4,8 @@ execute_process(COMMAND "${NM}" -S --defined-only "${ELF}"
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "Cannot inspect the diagnostic ELF")
 endif()
-foreach(name IN ITEMS yw1_module_identity yw1_module_diagnostics_state)
+foreach(name IN ITEMS yw1_module_identity yw1_module_diagnostics_state
+    yw1_module_log_header yw1_module_log_words)
     string(REGEX MATCH "([0-9a-fA-F]+) ([0-9a-fA-F]+) [A-Za-z] ${name}(\n|$)" row "${symbols}")
     if(NOT row)
         message(FATAL_ERROR "Missing diagnostic symbol ${name}")
@@ -29,4 +30,6 @@ file(WRITE "${OUTPUT}" "#pragma once\n#include <cstdint>\nnamespace yw1::compani
     "inline constexpr std::uint8_t kExpectedModuleId[32]{${bytes}};\n"
     "inline constexpr std::uint64_t kIdentityOffset=${yw1_module_identity_offset};\n"
     "inline constexpr std::uint64_t kStateOffset=${yw1_module_diagnostics_state_offset};\n"
-    "inline constexpr std::uint64_t kStateSize=${yw1_module_diagnostics_state_size};\n}\n")
+    "inline constexpr std::uint64_t kStateSize=${yw1_module_diagnostics_state_size};\n"
+    "inline constexpr std::uint64_t kExportHeaderOffset=${yw1_module_log_header_offset};\n"
+    "inline constexpr std::uint64_t kExportDataOffset=${yw1_module_log_words_offset};\n}\n")

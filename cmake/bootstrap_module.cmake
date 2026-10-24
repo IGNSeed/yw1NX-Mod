@@ -77,10 +77,12 @@ if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
 endif()
 if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
     target_sources(yw1_bootstrap PRIVATE
-        "${PROJECT_SOURCE_DIR}/source/diagnostics/module_state.cpp")
+        "${PROJECT_SOURCE_DIR}/source/diagnostics/module_state.cpp"
+        "${PROJECT_SOURCE_DIR}/source/diagnostics/log_export.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS=1)
     target_link_options(yw1_bootstrap PRIVATE
-        -Wl,--undefined=yw1_module_identity,--undefined=yw1_module_diagnostics_state)
+        -Wl,--undefined=yw1_module_identity,--undefined=yw1_module_diagnostics_state
+        -Wl,--undefined=yw1_module_log_header,--undefined=yw1_module_log_words)
 endif()
 target_include_directories(yw1_bootstrap BEFORE PRIVATE
     "${PROJECT_SOURCE_DIR}/source" "${yw1_exl}" "${yw1_exl}/lib"

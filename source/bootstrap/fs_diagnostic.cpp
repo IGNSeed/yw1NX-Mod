@@ -3,6 +3,9 @@
 
 #include <common.hpp>
 #include <lib/util/sys/cur_proc_handle.hpp>
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+#include "diagnostics/log_export.hpp"
+#endif
 
 namespace yw1::bootstrap {
 namespace {
@@ -26,7 +29,8 @@ template <std::size_t Size> void resultEvent(const char (&label)[Size], Result r
 void runFsDiagnostic() {
     logging::recordProgress(logging::Stage::InitEnter, 0);
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
-    event("\n=== YW1 B0.1.5 boot / FS diagnostic only ===\n");
+    diagnostics::setExportBootToken(svcGetSystemTick());
+    event("\n=== YW1 B0.1.6 boot / FS diagnostic only ===\n");
     event("source=module-bootstrap\n");
 #else
     event("\n=== YW1 B0.1.4 boot / FS diagnostic only ===\n");
@@ -41,6 +45,7 @@ void runFsDiagnostic() {
     if (result == 0 && titleId != kTitleId) {
         logging::recordProgress(logging::Stage::GuardDenied, logging::kWrongEntry);
         event("[YW1] program_id_mismatch; worker_skipped\n");
+        logging::recordWriterTerminal(3);
         return;
     }
 
@@ -58,6 +63,7 @@ void runFsDiagnostic() {
         logging::recordProgress(logging::Stage::GuardDenied,
                                 result != 0 ? result : logging::kWrongEntry);
         event("[YW1] program_id_unverified; worker_skipped\n");
+        logging::recordWriterTerminal(3);
         return;
     }
     event("[YW1] program_id_verified\n");

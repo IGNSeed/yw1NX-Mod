@@ -31,6 +31,9 @@ Result close(void*, Handle handle) {
 std::uint64_t ticks(void*) {
     return svcGetSystemTick();
 }
+void sleep(void*, std::uint64_t nanoseconds) {
+    svcSleepThread(static_cast<std::int64_t>(nanoseconds));
+}
 
 [[noreturn]] void worker(void*) {
     recordProgress(Stage::WorkerEnter, 0);
@@ -44,6 +47,7 @@ std::uint64_t ticks(void*) {
     while (!launchComplete.load(std::memory_order_acquire)) {
         if (svcGetSystemTick() >= readyDeadline) {
             recordProgress(Stage::LaunchAwait, kDeadline);
+            recordWriterTerminal(3);
             svcExitThread();
             __builtin_unreachable();
         }
@@ -52,7 +56,7 @@ std::uint64_t ticks(void*) {
     recordProgress(Stage::LaunchAwait, 0);
     constexpr char kStart[] = "[YW1] worker_enter\n";
     static_cast<void>(memoryLog().append(kStart, sizeof(kStart) - 1));
-    const KernelApi api{nullptr, connect, submit, wait, close, ticks};
+    const KernelApi api{nullptr, connect, submit, wait, close, ticks, sleep};
     IpcFs fs(api, storage, svcGetSystemTick() + 8 * 19200000);
     lastOutcome = writer.save(memoryLog(), fs, storage);
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
@@ -60,6 +64,7 @@ std::uint64_t ticks(void*) {
                                                                    std::memory_order_release);
 #endif
     recordProgress(Stage::Saved, lastOutcome.result);
+    recordWriterTerminal(lastOutcome.quarantined ? 2 : 1);
     char line[128];
     constexpr char kLabel[] = "[YW1] logger_final_result=";
     const auto size =
@@ -86,6 +91,7 @@ void startSdLogger(int priority) {
     constexpr char kCreate[] = "[YW1] worker_create_result=";
     static_cast<void>(memoryLog().appendResult(kCreate, sizeof(kCreate) - 1, result));
     if (result != 0 || handle == 0) {
+        recordWriterTerminal(3);
         return;
     }
     recordProgress(Stage::WorkerStart, kInProgress);
@@ -107,6 +113,9 @@ void startSdLogger(int priority) {
         static_cast<void>(svcOutputDebugString(line, size));
     }
     launchComplete.store(true, std::memory_order_release);
+    if (result != 0) {
+        recordWriterTerminal(3);
+    }
 }
 
 } // 名前空間 yw1::logging

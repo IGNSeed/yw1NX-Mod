@@ -38,7 +38,8 @@ enum class Stage : std::uint32_t {
     Saved,
     PriorityQuery = 60,
     GuardDenied,
-    LaunchAwait
+    LaunchAwait,
+    SmRetry
 };
 
 constexpr Result kInProgress = 0xFFFFFFFF;
@@ -86,6 +87,16 @@ inline void recordDirectoryIndex(std::uint32_t index) {
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
     diagnostics::yw1_module_diagnostics_state.directoryIndex.store(index,
                                                                    std::memory_order_release);
+#endif
+}
+
+// 終了後にFS要求を発行しない経路だけが、NROへ保存可能状態をrelease公開する。
+inline void recordWriterTerminal(std::uint64_t status) {
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+    diagnostics::yw1_module_diagnostics_state.writerTerminal.store(status,
+                                                                   std::memory_order_release);
+#else
+    static_cast<void>(status);
 #endif
 }
 

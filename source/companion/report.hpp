@@ -1,5 +1,6 @@
 #pragma once
 
+#include "diagnostics/log_export_wire.hpp"
 #include "diagnostics/module_wire.hpp"
 
 #include <cstdarg>
@@ -15,6 +16,8 @@ constexpr std::uint32_t kNoAddress = 0xE104;
 constexpr std::uint32_t kFileLimit = 0xE105;
 constexpr std::size_t kLoaderQueryCapacity = 16;
 constexpr std::uint32_t kSessionClosed = 0xF601;
+constexpr std::uint32_t kExportInvalid = 0xE106;
+constexpr std::uint32_t kExportChanged = 0xE107;
 
 // 固定Loaderの0x420以内かつ、交渉されたPointer Bufferの容量に制限する。
 inline std::size_t loaderCapacity(std::size_t pointerBytes) {
@@ -105,7 +108,16 @@ struct Observation {
     diagnostics::ModuleSnapshot snapshot{};
 };
 
-Observation inspectTarget(Report& report);
+struct BootstrapLog {
+    diagnostics::ExportedLogHeader header{};
+    alignas(8) char text[diagnostics::kExportCapacity]{};
+    std::uint64_t pid = 0;
+    std::uint64_t moduleBase = 0;
+    std::uint32_t readResult = kNotAttempted;
+    bool duplicate = false;
+};
+
+Observation inspectTarget(Report& report, BootstrapLog* bootstrap = nullptr);
 
 struct FileOutcome {
     std::uint32_t sdOpen = kNotAttempted;
@@ -117,8 +129,10 @@ struct FileOutcome {
     std::uint32_t receiptWrite = kNotAttempted;
     std::uint32_t receiptFlush = kNotAttempted;
     bool closeIssued = false;
+    std::size_t savedThrough = 0;
 };
 
-FileOutcome saveReport(Report& report);
+FileOutcome saveReport(Report& report, std::size_t startOffset = 0);
+std::uint32_t saveBootstrapLog(Report& report, BootstrapLog& bootstrap);
 
 } // 名前空間 yw1::companion

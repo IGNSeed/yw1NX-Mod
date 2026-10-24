@@ -82,7 +82,54 @@ class BoundReader {
     bool quarantined_ = false;
 };
 
-void inspectBoundProcess(Report& report, Observation& observation, Handle process) {
+void readBootstrapLog(BoundReader& reader, Report& report, BootstrapLog& output) {
+    output.readResult = kExportChanged;
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        diagnostics::ExportedLogHeader before{}, after{};
+        auto rc = reader.read(kExportHeaderOffset, &before, sizeof(before));
+        report.result("bootstrap_header_read_result", rc);
+        if (rc != 0) {
+            output.readResult = rc;
+            return;
+        }
+        if (!diagnostics::validExportHeader(before)) {
+            output.readResult = kExportInvalid;
+            return;
+        }
+        const auto rounded = (static_cast<std::size_t>(before.used) + 7) & ~std::size_t{7};
+        for (std::size_t offset = 0; offset < rounded; offset += 4096) {
+            const auto length = rounded - offset < 4096 ? rounded - offset : 4096;
+            report.append("bootstrap_page_offset=%zu length=%zu\n", offset, length);
+            rc = reader.read(kExportDataOffset + offset, output.text + offset, length);
+            report.result("bootstrap_page_read_result", rc);
+            if (rc != 0) {
+                output.readResult = rc;
+                return;
+            }
+        }
+        rc = reader.read(kExportHeaderOffset, &after, sizeof(after));
+        report.result("bootstrap_header_reread_result", rc);
+        if (rc != 0) {
+            output.readResult = rc;
+            return;
+        }
+        if (std::memcmp(&before, &after, sizeof(before)) != 0) {
+            report.result("bootstrap_snapshot_changed", kExportChanged);
+            continue;
+        }
+        if (!diagnostics::validExportText(output.text, before.used) ||
+            diagnostics::logChecksum(output.text, before.used) != before.checksum) {
+            output.readResult = kExportInvalid;
+            return;
+        }
+        output.header = before;
+        output.readResult = 0;
+        return;
+    }
+}
+
+void inspectBoundProcess(Report& report, Observation& observation, Handle process,
+                         BootstrapLog* bootstrap) {
     const auto pointerBytes = ldrDmntGetServiceSession()->pointer_buffer_size;
     const auto capacity = loaderCapacity(pointerBytes);
     report.append("loader_pointer_buffer_bytes=%u loader_requested_capacity=%zu\n",
@@ -186,6 +233,10 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                   static_cast<unsigned long long>(observation.snapshot.observedTitleId),
                   observation.snapshot.directoryIndex);
     report.append("game_ipc_quarantined=%u\n", observation.snapshot.ipcQuarantined);
+    report.append("sm_connect_attempts=%llu\n",
+                  static_cast<unsigned long long>(observation.snapshot.smConnectAttempts));
+    report.append("game_writer_terminal=%llu\n",
+                  static_cast<unsigned long long>(observation.snapshot.writerTerminal));
     for (std::size_t i = 0; i < diagnostics::kStageCount; ++i) {
         if (observation.snapshot.results[i] != 0) {
             report.append(
@@ -194,11 +245,24 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                 static_cast<unsigned long long>(observation.snapshot.firstNonzeroByStage[i]));
         }
     }
+    if (bootstrap != nullptr) {
+        bootstrap->pid = observation.pid;
+        bootstrap->moduleBase = modules[index].base;
+        readBootstrapLog(reader, report, *bootstrap);
+        observation.cleanupFailed = reader.quarantined();
+        report.result("bootstrap_export_read_result", bootstrap->readResult);
+        if (bootstrap->readResult == 0) {
+            report.append("bootstrap_used=%u dropped=%u flags=%u generation=%llu\n",
+                          bootstrap->header.used, bootstrap->header.dropped,
+                          bootstrap->header.flags,
+                          static_cast<unsigned long long>(bootstrap->header.generation));
+        }
+    }
 }
 
 } // 無名名前空間
 
-Observation inspectTarget(Report& report) {
+Observation inspectTarget(Report& report, BootstrapLog* bootstrap) {
     Observation observation;
     const auto pm = report.result("pm_init_result", pmdmntInitialize());
     if (pm != 0) {
@@ -232,10 +296,25 @@ Observation inspectTarget(Report& report) {
         report.append("override_keys=0x%016llX override_flags=0x%016llX\n",
                       static_cast<unsigned long long>(reply.keys),
                       static_cast<unsigned long long>(reply.flags));
+        // 固定PMのApplication group(1)/SessionCount(4)。process個別の使用数とは区別する。
+        constexpr std::uint64_t resourceInput = 1ULL | (4ULL << 32);
+        struct {
+            std::int64_t current;
+            std::int64_t limit;
+        } values{};
+        const auto resourceResult = report.result(
+            "application_group_session_query_result",
+            serviceDispatchInOut(pmdmntGetServiceSession(), 65001, resourceInput, values));
+        if (resourceResult == 0) {
+            report.append(
+                "resource_scope=pm_application_group session_current=%lld session_limit=%lld\n",
+                static_cast<long long>(values.current), static_cast<long long>(values.limit));
+        }
     }
     rc = report.result("loader_init_result", ldrDmntInitialize());
     if (rc == 0) {
-        inspectBoundProcess(report, observation, validProcess ? process : INVALID_HANDLE);
+        inspectBoundProcess(report, observation, validProcess ? process : INVALID_HANDLE,
+                            bootstrap);
         ldrDmntExit();
         report.append("loader_exit_issued=true\n");
     } else {

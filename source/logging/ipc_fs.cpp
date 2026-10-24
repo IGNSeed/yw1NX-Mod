@@ -186,10 +186,40 @@ Result IpcFs::initialize() {
     if (sm_ != 0 || proxy_ != 0 || quarantined_) {
         return kAlreadyRun;
     }
-    // 名前付きport接続は1回。SM未起動・資源不足なら安全に中断する。
+    // 接続成立前のSession予約失敗だけ、Workerで最大1回再試行する。
     Handle sm = 0;
-    recordProgress(Stage::SmConnect, kInProgress);
-    Result result = recordProgress(Stage::SmConnect, api_.connect(api_.user, &sm, "sm:"));
+    Result result = kInvalidResponse;
+    constexpr Result kSessionLimit = 0x10801;
+    for (std::uint32_t attempt = 1; attempt <= 2; ++attempt) {
+        sm = 0;
+        recordProgress(Stage::SmConnect, kInProgress);
+        result = recordProgress(Stage::SmConnect, api_.connect(api_.user, &sm, "sm:"));
+#if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
+        diagnostics::yw1_module_diagnostics_state.smConnectAttempts.store(
+            attempt, std::memory_order_release);
+#endif
+        constexpr char kAttempt[] = "[YW1] sm_connect_attempt=";
+        constexpr char kResult[] = "[YW1] sm_connect_result=";
+        static_cast<void>(memoryLog().appendResult(kAttempt, sizeof(kAttempt) - 1, attempt));
+        static_cast<void>(memoryLog().appendResult(kResult, sizeof(kResult) - 1, result));
+        if (attempt > 1) {
+            recordProgress(Stage::SmRetry, result);
+        }
+        if (result != kSessionLimit || attempt == 2 || api_.sleep == nullptr) {
+            break;
+        }
+        const auto now = api_.ticks(api_.user);
+        if (now >= deadline_ || deadline_ - now <= kTickFrequency / 4) {
+            recordProgress(Stage::SmRetry, kDeadline);
+            break;
+        }
+        recordProgress(Stage::SmRetry, kInProgress);
+        api_.sleep(api_.user, 250000000);
+        if (api_.ticks(api_.user) >= deadline_) {
+            recordProgress(Stage::SmRetry, kDeadline);
+            break;
+        }
+    }
     if (result != 0) {
         return result;
     }
