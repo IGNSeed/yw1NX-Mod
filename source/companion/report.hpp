@@ -13,6 +13,14 @@ constexpr std::uint32_t kWrongTarget = 0xE102;
 constexpr std::uint32_t kUnavailable = 0xE103;
 constexpr std::uint32_t kNoAddress = 0xE104;
 constexpr std::uint32_t kFileLimit = 0xE105;
+constexpr std::size_t kLoaderQueryCapacity = 16;
+constexpr std::uint32_t kSessionClosed = 0xF601;
+
+// 固定Loaderの0x420以内かつ、交渉されたPointer Bufferの容量に制限する。
+inline std::size_t loaderCapacity(std::size_t pointerBytes) {
+    const auto count = pointerBytes / 48;
+    return count < kLoaderQueryCapacity ? count : kLoaderQueryCapacity;
+}
 constexpr std::size_t kReportCapacity = 24 * 1024;
 constexpr std::uint64_t kFileCapacity = 1024 * 1024;
 constexpr char kLogPath[] = "/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD/logs.txt";
@@ -21,6 +29,7 @@ struct Report {
     char text[kReportCapacity]{};
     std::size_t size = 0;
     bool truncated = false;
+    std::uint32_t firstAnomaly = 0;
 
     void append(const char* format, ...) {
         va_list args;
@@ -35,6 +44,9 @@ struct Report {
     }
 
     std::uint32_t result(const char* label, std::uint32_t value) {
+        if (firstAnomaly == 0 && value != 0 && value != kNotAttempted) {
+            firstAnomaly = value;
+        }
         append("%s=0x%08X\n", label, value);
         return value;
     }

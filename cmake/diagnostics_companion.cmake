@@ -9,7 +9,7 @@ target_include_directories(yw1_diagnostics PRIVATE source "${CMAKE_CURRENT_BINAR
 target_include_directories(yw1_diagnostics SYSTEM PRIVATE "${DEVKITPRO}/libnx/include")
 target_compile_features(yw1_diagnostics PRIVATE cxx_std_20)
 target_compile_definitions(yw1_diagnostics PRIVATE __SWITCH__)
-target_compile_options(yw1_diagnostics PRIVATE -O2 -march=armv8-a+crc+crypto -mtune=cortex-a57
+target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)
 target_link_directories(yw1_diagnostics PRIVATE "${DEVKITPRO}/libnx/lib")
@@ -33,6 +33,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.specs" "${nro_specs}")
 target_link_options(yw1_diagnostics PRIVATE
     "-specs=${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.specs"
     -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft
+    -Wl,--wrap=framebufferCreate,--wrap=framebufferMakeLinear
     "-Wl,-Map,${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.map")
 set_property(TARGET yw1_diagnostics APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.ld")
@@ -41,7 +42,7 @@ set_property(TARGET yw1_diagnostics PROPERTY RULE_LAUNCH_LINK
     "\"${CMAKE_COMMAND}\" -E env DEVKITPRO=${DEVKITPRO}")
 add_custom_command(TARGET yw1_diagnostics POST_BUILD
     COMMAND "${DEVKITPRO}/tools/bin/nacptool${YW1_TOOL_SUFFIX}" --create
-        "YW1 Diagnostics" "YW1NX-Mod" "B0.1.5" "${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.nacp"
+        "YW1 Diagnostics" "YW1NX-Mod" "B0.1.5.1" "${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.nacp"
     COMMAND "${DEVKITPRO}/tools/bin/elf2nro${YW1_TOOL_SUFFIX}" "$<TARGET_FILE:yw1_diagnostics>"
         "${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.nro"
         "--nacp=${CMAKE_CURRENT_BINARY_DIR}/yw1_diagnostics.nacp"

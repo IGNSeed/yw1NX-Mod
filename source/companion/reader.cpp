@@ -83,18 +83,30 @@ class BoundReader {
 };
 
 void inspectBoundProcess(Report& report, Observation& observation, Handle process) {
-    LoaderModuleInfo rawModules[32]{};
+    const auto pointerBytes = ldrDmntGetServiceSession()->pointer_buffer_size;
+    const auto capacity = loaderCapacity(pointerBytes);
+    report.append("loader_pointer_buffer_bytes=%u loader_requested_capacity=%zu\n",
+                  static_cast<unsigned>(pointerBytes), capacity);
+    if (capacity == 0) {
+        observation.result = kUnavailable;
+        report.append("loader_query_not_attempted=pointer_buffer_too_small_or_unknown\n");
+        return;
+    }
+    LoaderModuleInfo rawModules[kLoaderQueryCapacity]{};
     s32 count = 0;
-    auto rc = report.result("loader_module_query_result",
-                            ldrDmntGetProcessModuleInfo(observation.pid, rawModules, 32, &count));
-    if (rc != 0 || count < 0 || count > 32) {
+    auto rc =
+        report.result("loader_module_query_result",
+                      ldrDmntGetProcessModuleInfo(observation.pid, rawModules, capacity, &count));
+    if (rc != 0 || count < 0 || static_cast<std::size_t>(count) > capacity) {
         observation.result = rc != 0 ? rc : kInvalidData;
         return;
     }
-    ModuleRecord modules[32]{};
+    ModuleRecord modules[kLoaderQueryCapacity]{};
     std::memcpy(modules, rawModules, sizeof(modules));
     observation.moduleCount = count;
     report.append("loader_module_count=%d\n", count);
+    report.append("loader_list_complete=%s\n",
+                  static_cast<std::size_t>(count) < capacity ? "true" : "unknown_capacity_reached");
     for (int i = 0; i < count; ++i) {
         report.append("module[%d].base=0x%016llX size=0x%llX build_id=", i,
                       static_cast<unsigned long long>(modules[i].base),
@@ -112,8 +124,9 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
     report.append("main_build_id_verified=true\n");
     const auto index = findModule(modules, count, kExpectedModuleId);
     if (index < 0) {
-        observation.moduleDetected = index == -1 && count < 32 ? 0 : -1;
-        observation.result = index == -1 && count < 32 ? 0 : kInvalidData;
+        const bool absent = index == -1 && static_cast<std::size_t>(count) < capacity;
+        observation.moduleDetected = absent ? 0 : -1;
+        observation.result = absent ? 0 : kInvalidData;
         return;
     }
     observation.moduleDetected = 1;
@@ -224,6 +237,7 @@ Observation inspectTarget(Report& report) {
     if (rc == 0) {
         inspectBoundProcess(report, observation, validProcess ? process : INVALID_HANDLE);
         ldrDmntExit();
+        report.append("loader_exit_issued=true\n");
     } else {
         observation.result = rc;
     }
@@ -233,6 +247,7 @@ Observation inspectTarget(Report& report) {
         report.result("process_handle_close_result", svcCloseHandle(process));
     }
     pmdmntExit();
+    report.append("pm_exit_issued=true\n");
     return observation;
 }
 

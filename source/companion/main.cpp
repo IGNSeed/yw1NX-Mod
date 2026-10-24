@@ -9,8 +9,83 @@ constinit Result hidResult = yw1::companion::kNotAttempted;
 constinit Result fsResult = yw1::companion::kNotAttempted;
 constinit yw1::companion::Report report;
 
+bool consoleReady(const PrintConsole* screen) {
+    return screen != nullptr && screen->consoleInitialised && screen->renderer != nullptr &&
+           screen->renderer->drawChar != nullptr && screen->renderer->scrollWindow != nullptr &&
+           screen->renderer->flushAndSwap != nullptr && screen->renderer->deinit != nullptr;
+}
+
+// 標準__appInitのWindow準備を、abortする内部entryを使わず実Resultで実行する。
+class WindowSession {
+  public:
+    Result initialize(yw1::companion::Report& log) {
+        auto rc = log.result("vi_initialize_result", viInitialize(ViServiceType_Default));
+        if (rc != 0) {
+            return rc;
+        }
+        viReady_ = true;
+        rc = log.result("vi_open_display_result", viOpenDefaultDisplay(&display_));
+        if (rc != 0) {
+            return rc;
+        }
+        displayReady_ = true;
+        rc = log.result("vi_create_layer_result", viCreateLayer(&display_, &layer_));
+        if (rc != 0) {
+            return rc;
+        }
+        layerReady_ = true;
+        rc = log.result("vi_scaling_result",
+                        viSetLayerScalingMode(&layer_, ViScalingMode_FitToLayer));
+        if (rc != 0) {
+            return rc;
+        }
+        window_ = nwindowGetDefault();
+        if (window_ == nullptr || nwindowIsValid(window_)) {
+            return log.result("default_window_ownership_check", yw1::companion::kInvalidData);
+        }
+        rc = log.result("nwindow_create_result", nwindowCreateFromLayer(window_, &layer_));
+        if (rc != 0) {
+            return rc;
+        }
+        windowReady_ = true;
+        return log.result("nwindow_dimensions_result", nwindowSetDimensions(window_, 1280, 720));
+    }
+    void close(yw1::companion::Report& log) {
+        if (windowReady_) {
+            nwindowClose(window_);
+            windowReady_ = false;
+            log.append("nwindow_close_issued=true\n");
+        }
+        if (layerReady_) {
+            log.result("vi_close_layer_result", viCloseLayer(&layer_));
+            layerReady_ = false;
+        }
+        if (displayReady_) {
+            log.result("vi_close_display_result", viCloseDisplay(&display_));
+            displayReady_ = false;
+        }
+        if (viReady_) {
+            viExit();
+            viReady_ = false;
+            log.append("vi_exit_issued=true\n");
+        }
+    }
+
+  private:
+    ViDisplay display_{};
+    ViLayer layer_{};
+    NWindow* window_ = nullptr;
+    bool viReady_ = false;
+    bool displayReady_ = false;
+    bool layerReady_ = false;
+    bool windowReady_ = false;
+};
+
 // 保存失敗時も、全Resultを画面から回収できるように固定幅でページ分割する。
-std::size_t showDetails(std::size_t page) {
+std::size_t showDetails(PrintConsole* screen, std::size_t page) {
+    if (!consoleReady(screen)) {
+        return 0;
+    }
     consoleClear();
     std::printf("Details page %zu   L/R: page, A: summary, B: back\n\n", page + 1);
     std::size_t row = 0;
@@ -33,6 +108,19 @@ std::size_t showDetails(std::size_t page) {
     }
     return row / 30;
 }
+}
+
+extern "C" Result __real_framebufferCreate(Framebuffer*, NWindow*, u32, u32, u32, u32);
+extern "C" Result __real_framebufferMakeLinear(Framebuffer*);
+
+// NRO自身の呼出しだけを包み、SDKの実Resultをそのまま記録・返却する。
+extern "C" Result __wrap_framebufferCreate(Framebuffer* fb, NWindow* window, u32 width, u32 height,
+                                           u32 format, u32 count) {
+    return report.result("framebuffer_create_result",
+                         __real_framebufferCreate(fb, window, width, height, format, count));
+}
+extern "C" Result __wrap_framebufferMakeLinear(Framebuffer* fb) {
+    return report.result("framebuffer_linear_result", __real_framebufferMakeLinear(fb));
 }
 
 // 通常のlibnx crt0/TLS/heapを使用するが、FS初期化失敗をmain前のabortにしない。
@@ -72,13 +160,12 @@ extern "C" void __appExit() {
 
 int main() {
     using namespace yw1::companion;
-    report.append("\n=== YW1 Diagnostics B0.1.5 ===\nsource=companion-nro\n"
+    report.append("\n=== YW1 Diagnostics B0.1.5.1 ===\nsource=companion-nro\n"
                   "title_id=0100C0000CEEA000\n");
     report.result("sm_startup_result", smResult);
     report.result("applet_startup_result", appletResult);
     report.result("hid_startup_result", hidResult);
     report.result("fs_startup_result", fsResult);
-    const bool screenReady = appletResult == 0 && consoleInit(nullptr) != nullptr;
     const bool album = appletResult == 0 && appletGetAppletType() == AppletType_LibraryApplet;
     report.append("album_library_applet=%s\n", album ? "true" : "false");
     Observation observation;
@@ -97,16 +184,43 @@ int main() {
                         state.results[62] != (yw1::diagnostics::kPresent | 0xE002));
     }
     FileOutcome file;
-    if (fsResult == 0 && !writerActive) {
-        file = saveReport(report);
-    } else {
-        report.append("sd_save_not_attempted=%s\n",
-                      writerActive ? "game_writer_active" : "fs_unavailable");
+    // UIの初期化前に実診断結果を保存する。以後のcheckpointも固定回数だけ追記する。
+    const auto persist = [&](const char* phase) {
+        report.append("nro_phase=%s first_anomaly_result=0x%08X\n", phase, report.firstAnomaly);
+        if (fsResult == 0 && !writerActive) {
+            file = saveReport(report);
+        } else {
+            report.append("sd_save_not_attempted=%s\n",
+                          writerActive ? "game_writer_active" : "fs_unavailable");
+        }
+    };
+    persist("ui_init_begin");
+    WindowSession window;
+    PrintConsole* screen = nullptr;
+    bool consoleAttempted = false;
+    if (appletResult == 0) {
+        if (window.initialize(report) == 0) {
+            consoleAttempted = true;
+            screen = consoleInit(nullptr);
+        }
     }
-    if (screenReady) {
+    const bool initialized = consoleReady(screen);
+    report.append("console_init_attempted=%s console_nonnull=%s console_initialised=%s "
+                  "renderer_ready=%s\n",
+                  consoleAttempted ? "true" : "false", screen != nullptr ? "true" : "false",
+                  screen != nullptr && screen->consoleInitialised ? "true" : "false",
+                  initialized ? "true" : "false");
+    if (appletResult == 0 && !initialized) {
+        report.result("console_readiness_check", kUnavailable);
+    }
+    persist(initialized ? "ui_init_returned_ready" : "ui_init_failed_no_draw");
+    if (initialized) {
         const auto summary = [&]() {
+            if (!consoleReady(screen)) {
+                return;
+            }
             consoleClear();
-            std::printf("YW1 Diagnostics B0.1.5\nsource=companion-nro\n\n");
+            std::printf("YW1 Diagnostics B0.1.5.1\nsource=companion-nro\n\n");
             std::printf("Album mode: %s\nPID: %llu\nModules: %d\nModule: %d  DT_INIT: %d\n",
                         album ? "yes" : "NO - use Album",
                         static_cast<unsigned long long>(observation.pid), observation.moduleCount,
@@ -134,7 +248,9 @@ int main() {
             std::printf("-1=unknown, 0=no, 1=yes; FFFFFFFF=not attempted\n\nA: details (all "
                         "Results), B: back\n");
         };
+        persist("ui_draw_begin");
         summary();
+        bool updateRecorded = false;
         bool details = false;
         std::size_t page = 0;
         std::size_t lastPage = 0;
@@ -144,6 +260,10 @@ int main() {
             padInitializeDefault(&pad);
         }
         while (appletMainLoop()) {
+            if (!consoleReady(screen)) {
+                report.result("console_readiness_lost", kUnavailable);
+                break;
+            }
             if (hidResult == 0) {
                 padUpdate(&pad);
                 const auto down = padGetButtonsDown(&pad);
@@ -154,20 +274,36 @@ int main() {
                     details = !details;
                     page = 0;
                     if (details) {
-                        lastPage = showDetails(page);
+                        lastPage = showDetails(screen, page);
                     } else {
                         summary();
                     }
                 } else if (details && (down & HidNpadButton_L) && page != 0) {
-                    lastPage = showDetails(--page);
+                    lastPage = showDetails(screen, --page);
                 } else if (details && (down & HidNpadButton_R) && page < lastPage) {
-                    lastPage = showDetails(++page);
+                    lastPage = showDetails(screen, ++page);
                 }
             }
-            consoleUpdate(nullptr);
+            if (!consoleReady(screen)) {
+                break;
+            }
+            consoleUpdate(screen);
+            if (!updateRecorded) {
+                persist("ui_first_update_returned");
+                updateRecorded = true;
+            }
             svcSleepThread(16000000);
         }
-        consoleExit(nullptr);
+        report.append("nro_phase=ui_exit_begin\n");
+        if (consoleReady(screen)) {
+            consoleExit(screen);
+            report.append("console_exit_returned=true\n");
+        } else {
+            report.append("console_exit_skipped=renderer_not_ready\n");
+        }
     }
+    window.close(report);
+    report.append("nro_phase=ui_cleanup_complete\nnro_main_return=0\n");
+    persist("main_cleanup_complete");
     return 0;
 }
