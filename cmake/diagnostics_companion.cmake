@@ -33,6 +33,11 @@ if(YW1_COMPANION_EGL_TARGET_MEMORY)
     target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_EGL_TARGET_MEMORY=1)
     set(yw1_diagnostic_version "B0.2.3")
 endif()
+if(YW1_COMPANION_EGL_CODE_SNAPSHOT)
+    target_sources(yw1_diagnostics PRIVATE source/companion/code_snapshot.cpp)
+    target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_EGL_CODE_SNAPSHOT=1)
+    set(yw1_diagnostic_version "B0.2.4")
+endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)

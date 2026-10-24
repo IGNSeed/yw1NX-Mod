@@ -46,6 +46,56 @@ class BoundReader {
         return readFrom(main, kGotSlotOffset, &output, 8);
     }
 #endif
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+    Result readSnapshot(const GotObservation& got, CodeSnapshot& output) {
+        CodeSnapshot checked;
+        if (quarantined_ || snapshotPreflight(got, checked) != 0) {
+            return kInvalidData;
+        }
+        if (!envIsSyscallHinted(0x74) || !envIsSyscallHinted(0x75)) {
+            return kUnavailable;
+        }
+        virtmemLock();
+        auto* destination = virtmemFindAslr(4096, 4096);
+        if (destination == nullptr) {
+            virtmemUnlock();
+            return kNoAddress;
+        }
+        output.mapAttempted = true;
+        output.map = svcMapProcessMemory(destination, process_, checked.pageAddress, 4096);
+        if (output.map != 0) {
+            virtmemUnlock();
+            return output.map;
+        }
+        // Kernelが保持したphysical pageのaliasだけを読む。source/aliasへのstoreは行わない。
+        const auto* words = reinterpret_cast<const std::uint32_t*>(
+            static_cast<const unsigned char*>(destination) + checked.pageOffset);
+        std::array<std::uint32_t, 4> first{}, second{};
+        output.readAttempted = true;
+        for (std::size_t i = 0; i < 4; ++i) {
+            first[i] = __atomic_load_n(words + i, __ATOMIC_ACQUIRE);
+        }
+        for (std::size_t i = 0; i < 4; ++i) {
+            second[i] = __atomic_load_n(words + i, __ATOMIC_ACQUIRE);
+        }
+        output.readsMatched = first == second;
+        output.read = output.readsMatched ? 0 : kSnapshotMismatch;
+        // 不一致でも必ずUnmapする。失敗したaliasは再利用せず、既存Reader全体を隔離する。
+        output.unmapAttempted = true;
+        output.unmap = svcUnmapProcessMemory(destination, process_, checked.pageAddress, 4096);
+        quarantined_ = output.unmap != 0;
+        output.cleanupQuarantined = quarantined_;
+        virtmemUnlock();
+        if (output.unmap != 0) {
+            return output.unmap;
+        }
+        if (output.read != 0) {
+            return output.read;
+        }
+        std::memcpy(output.bytes.data(), first.data(), kSnapshotLength);
+        return 0;
+    }
+#endif
     bool quarantined() const {
         return quarantined_;
     }
@@ -154,6 +204,96 @@ void inspectTargetMemory(Handle process, std::span<const ModuleRecord> modules,
     }
     // 既知module外は、X bitが判明しても所有者や関数としての正当性を確定しない。
 }
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+Result revalidateSnapshot(BoundReader& reader, Handle process, const ModuleRecord& main,
+                          std::uint64_t expectedPid, std::uint64_t expectedTitle,
+                          const GotObservation& got, CodeSnapshot& output, bool before) {
+    auto& pidResult = before ? output.beforePid : output.afterPid;
+    auto& titleResult = before ? output.beforeTitle : output.afterTitle;
+    auto& gotResult = before ? output.beforeGot : output.afterGot;
+    auto& queryResult = before ? output.beforeQuery : output.afterQuery;
+    if (reader.quarantined()) {
+        return kSessionClosed;
+    }
+    std::uint64_t pid = 0, title = 0, value = 0;
+    pidResult = svcGetProcessId(&pid, process);
+    if (pidResult != 0) {
+        return pidResult;
+    }
+    if (pid != expectedPid) {
+        return kWrongTarget;
+    }
+    titleResult = svcGetInfo(&title, InfoType_ProgramId, process, 0);
+    if (titleResult != 0) {
+        return titleResult;
+    }
+    if (title != expectedTitle) {
+        return kWrongTarget;
+    }
+    gotResult = reader.readGot(main, value);
+    if (gotResult != 0) {
+        return gotResult;
+    }
+    if (value != got.slotValue) {
+        return kSnapshotChanged;
+    }
+    MemoryInfo info{};
+    u32 pageInfo = 0;
+    queryResult = svcQueryProcessMemory(&info, &pageInfo, process, got.slotValue);
+    if (queryResult != 0) {
+        return queryResult;
+    }
+    TargetMemoryObservation memory;
+    memory.queryAttempted = memory.infoReturned = true;
+    memory.queryResult = 0;
+    memory.addressBaseResult = memory.addressSizeResult = 0;
+    memory.addressSpaceBase = got.memory.addressSpaceBase;
+    memory.addressSpaceSize = got.memory.addressSpaceSize;
+    memory.region = {info.addr, info.size,         info.type,           info.attr,
+                     info.perm, info.ipc_refcount, info.device_refcount};
+    validateTargetRegion(got.slotValue, memory);
+    if (!sameSnapshotRegion(got.memory.region, memory.region)) {
+        return kSnapshotChanged;
+    }
+    auto current = got;
+    current.memory = memory;
+    CodeSnapshot checked;
+    return snapshotPreflight(current, checked);
+}
+
+void inspectCodeSnapshot(BoundReader& reader, Handle process, const ModuleRecord& main,
+                         std::uint64_t pid, std::uint64_t title, GotObservation& got) {
+    auto& output = got.snapshot;
+    output.result = snapshotPreflight(got, output);
+    if (output.result != 0) {
+        return;
+    }
+    for (const auto svc : {0x24, 0x29, 0x74, 0x75, 0x76}) {
+        if (!envIsSyscallHinted(svc)) {
+            output.result = output.preflight = kUnavailable;
+            return;
+        }
+    }
+    output.revalidation = revalidateSnapshot(reader, process, main, pid, title, got, output, true);
+    output.result = output.revalidation;
+    output.cleanupQuarantined = reader.quarantined();
+    if (output.result != 0) {
+        return;
+    }
+    output.result = reader.readSnapshot(got, output);
+    if (output.result != 0) {
+        return;
+    }
+    output.postvalidation =
+        revalidateSnapshot(reader, process, main, pid, title, got, output, false);
+    output.result = output.postvalidation;
+    output.cleanupQuarantined = reader.quarantined();
+    output.bytesValid = output.result == 0;
+    if (!output.bytesValid) {
+        output.bytes.fill(0);
+    }
+}
+#endif
 #endif
 bool validGameInfo(const MemoryInfo& info, std::uint64_t address, std::size_t size) {
     return info.addr % 4096 == 0 && info.size % 4096 == 0 && (info.perm & ~7u) == 0 &&
@@ -200,6 +340,9 @@ void inspectGot(BoundReader& reader, Handle process, std::span<const ModuleRecor
     classifyGot(modules, output);
 #if YW1_COMPANION_EGL_TARGET_MEMORY
     inspectTargetMemory(process, modules, output);
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+    inspectCodeSnapshot(reader, process, modules[main], pid, title, output);
+#endif
 #else
     if (output.normalizedKnown && envIsSyscallHinted(0x76)) {
         MemoryInfo info{};

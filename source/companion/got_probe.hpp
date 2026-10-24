@@ -6,6 +6,9 @@
 #if YW1_COMPANION_EGL_TARGET_MEMORY
 #include "target_memory.hpp"
 #endif
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+#include "code_snapshot.hpp"
+#endif
 
 namespace yw1::companion {
 struct ModuleRecord;
@@ -43,6 +46,9 @@ struct GotObservation {
     GotBinding binding = GotBinding::Unknown;
 #if YW1_COMPANION_EGL_TARGET_MEMORY
     TargetMemoryObservation memory{};
+#endif
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+    CodeSnapshot snapshot{};
 #endif
 };
 

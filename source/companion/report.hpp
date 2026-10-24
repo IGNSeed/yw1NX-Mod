@@ -14,7 +14,9 @@
 
 namespace yw1::companion {
 
-#if YW1_COMPANION_EGL_TARGET_MEMORY
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+constexpr char kCompanionVersion[] = "B0.2.4";
+#elif YW1_COMPANION_EGL_TARGET_MEMORY
 constexpr char kCompanionVersion[] = "B0.2.3";
 #elif YW1_COMPANION_EGL_GOT_PROBE
 constexpr char kCompanionVersion[] = "B0.2.2";

@@ -278,6 +278,9 @@ int main() {
         bool gotPage = false;
 #if YW1_COMPANION_EGL_TARGET_MEMORY
         bool targetMemoryPage = false;
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+        bool codeSnapshotPage = false;
+#endif
 #endif
         const auto showGot = [&] {
             if (!consoleReady(screen)) {
@@ -332,9 +335,10 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& memory = got.memory;
-            std::printf("EGL GOT Target Memory B0.2.3\nSource: game process  Read-only: yes\n"
+            std::printf("EGL GOT Target Memory %s\nSource: game process  Read-only: yes\n"
                         "GOT Read: %08X Target Query: %08X\nQuery attempted: %s\n",
-                        got.readResult, memory.queryResult, targetBoolean(memory.queryAttempted));
+                        kCompanionVersion, got.readResult, memory.queryResult,
+                        targetBoolean(memory.queryAttempted));
             if (got.valueKnown) {
                 const auto relative = relativeAddress(got.slotValue, got.mainBase);
                 std::printf("Target: %016llX\nRelative to Main: %s0x%llX\n",
@@ -363,18 +367,79 @@ int main() {
                             "Attributes / Permission / Refcounts: unknown\n");
             }
             std::printf("Region Valid: %s Contains Pointer: %s\nMapped: %s\n"
-                        "Readable: %s Writable: %s Executable: %s\nValidation: %08X\n"
-                        "Code Read: not attempted FFFFFFFF\nCode bytes: unknown\n"
-                        "Code snapshot disabled pending mapping/lifetime evidence.\n"
-                        "Executable page does not verify a function or owner.\n"
-                        "Hook Active: no GOT Modification: disabled\n"
-                        "Album snapshot does not prove stability during play.\n"
-                        "A: summary L: GOT Probe B: back\n",
+                        "Readable: %s Writable: %s Executable: %s\nValidation: %08X\n",
                         targetBoolean(memory.infoReturned ? (memory.regionValid ? 1 : 0) : -1),
                         targetBoolean(memory.containsPointer), targetBoolean(memory.mapped),
                         targetBoolean(memory.readable), targetBoolean(memory.writable),
                         targetBoolean(memory.executable), memory.validationResult);
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+            std::printf("Code Snapshot Result: %08X Valid: %s\nR: Code Snapshot\n",
+                        got.snapshot.result, targetBoolean(got.snapshot.bytesValid));
+#else
+            std::printf("Code Read: not attempted FFFFFFFF\nCode bytes: unknown\n"
+                        "Code snapshot disabled pending mapping/lifetime evidence.\n");
+#endif
+            std::printf("Executable page does not verify a function or owner.\n"
+                        "Hook Active: no GOT Modification: disabled\n"
+                        "Album snapshot does not prove stability during play.\n"
+                        "A: summary L: GOT Probe B: back\n");
         };
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+        const auto showCodeSnapshot = [&] {
+            if (!consoleReady(screen)) {
+                return;
+            }
+            consoleClear();
+            const auto& got = observation.got;
+            const auto& snapshot = got.snapshot;
+            std::printf("EGL GOT Code Snapshot B0.2.4\nSource: game process  Mode: read-only\n"
+                        "GOT Read: %08X Target Query: %08X\n",
+                        got.readResult, got.memory.queryResult);
+            if (got.valueKnown) {
+                const auto relative = relativeAddress(got.slotValue, got.mainBase);
+                std::printf("Target: %016llX Main Relative: %s0x%llX\n",
+                            static_cast<unsigned long long>(got.slotValue),
+                            relative.negative ? "-" : "+",
+                            static_cast<unsigned long long>(relative.magnitude));
+            } else {
+                std::printf("Target / Main Relative: unknown\n");
+            }
+            if (got.memory.regionValid && got.valueKnown) {
+                std::printf("Region Offset: +0x%llX Type: %X Permission: %X Attributes: %X\n",
+                            static_cast<unsigned long long>(got.slotValue - got.memory.region.base),
+                            got.memory.region.type, got.memory.region.permission,
+                            got.memory.region.attributes);
+            } else {
+                std::printf("Region Offset / Type / Permission / Attributes: unknown\n");
+            }
+            const auto stage = [](const char* name, std::uint32_t value) {
+                std::printf("%s: %08X%s\n", name, value,
+                            value == UINT32_MAX ? " (not attempted)" : "");
+            };
+            stage("Preflight", snapshot.preflight);
+            stage("Revalidation", snapshot.revalidation);
+            stage("Map", snapshot.map);
+            stage("Read", snapshot.read);
+            stage("Unmap", snapshot.unmap);
+            stage("Postvalidation", snapshot.postvalidation);
+            std::printf("Snapshot Valid: %s Quarantined: %s\nLength: 16 Bytes:\n",
+                        targetBoolean(snapshot.bytesValid),
+                        targetBoolean(snapshot.cleanupQuarantined));
+            if (snapshot.bytesValid) {
+                for (unsigned i = 0; i < kSnapshotLength; ++i) {
+                    std::printf("%02X%s", snapshot.bytes[i],
+                                i % 8 == 7 ? "\n" : (i % 4 == 3 ? " " : ""));
+                }
+            } else {
+                std::printf("unknown\n");
+            }
+            std::printf("Consistency: %s\nNo target execution or branch following.\n"
+                        "Hook Active: no GOT Modification: disabled\n"
+                        "Snapshot does not verify owner or hook safety.\n"
+                        "A: summary L: Target Memory B: back\n",
+                        snapshotConsistency(snapshot));
+        };
+#endif
 #endif
 #endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
@@ -485,6 +550,12 @@ int main() {
                 if (down & HidNpadButton_A) {
 #if YW1_COMPANION_EGL_GOT_PROBE
 #if YW1_COMPANION_EGL_TARGET_MEMORY
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+                    if (codeSnapshotPage) {
+                        details = true;
+                    }
+                    codeSnapshotPage = false;
+#endif
                     if (targetMemoryPage) {
                         details = true;
                     }
@@ -511,6 +582,19 @@ int main() {
                 }
 #if YW1_COMPANION_EGL_GOT_PROBE
 #if YW1_COMPANION_EGL_TARGET_MEMORY
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+                else if (codeSnapshotPage) {
+                    if (down & HidNpadButton_L) {
+                        codeSnapshotPage = false;
+                        targetMemoryPage = true;
+                        showTargetMemory();
+                    }
+                } else if (targetMemoryPage && (down & HidNpadButton_R)) {
+                    targetMemoryPage = false;
+                    codeSnapshotPage = true;
+                    showCodeSnapshot();
+                }
+#endif
                 else if (targetMemoryPage) {
                     if (down & HidNpadButton_L) {
                         targetMemoryPage = false;

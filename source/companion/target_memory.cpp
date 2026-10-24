@@ -109,10 +109,10 @@ const char* targetBoolean(int value) {
 void appendTargetMemoryReport(Report& report, const Observation& observation) {
     const auto& got = observation.got;
     const auto& memory = got.memory;
-    report.append("\n=== YW1 EGL GOT Target Memory B0.2.3 ===\n"
+    report.append("\n=== YW1 EGL GOT Target Memory %s ===\n"
                   "source=companion-nro mode=read-only memory_scope=bound_game_process\n"
                   "observation_stage=album_snapshot target_query_attempted=%u\n",
-                  memory.queryAttempted);
+                  kCompanionVersion, memory.queryAttempted);
     report.result("target_address_space_base_result", memory.addressBaseResult);
     report.result("target_address_space_size_result", memory.addressSizeResult);
     report.result("target_query_result", memory.queryResult);
@@ -156,14 +156,31 @@ void appendTargetMemoryReport(Report& report, const Observation& observation) {
     }
     report.append("target_region_valid=%s target_region_contains_pointer=%s target_mapped=%s\n"
                   "target_readable=%s target_writable=%s target_executable=%s\n"
-                  "memory_state_semantics=MemoryInfo_type_only_not_full_kernel_state\n"
-                  "target_code_read_attempted=0 target_code_read_result=0xFFFFFFFF\n"
-                  "target_code_bytes=unknown target_code_length=0\n"
-                  "target_code_read_policy=disabled_pending_region_and_mapping_lifetime_evidence\n"
-                  "got_hook_install_attempted=0 got_modification=disabled\n",
+                  "memory_state_semantics=MemoryInfo_type_only_not_full_kernel_state\n",
                   targetBoolean(memory.infoReturned ? (memory.regionValid ? 1 : 0) : -1),
                   targetBoolean(memory.containsPointer), targetBoolean(memory.mapped),
                   targetBoolean(memory.readable), targetBoolean(memory.writable),
                   targetBoolean(memory.executable));
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+    const auto& snapshot = got.snapshot;
+    report.append("target_code_read_attempted=%u target_code_read_result=0x%08X\n"
+                  "target_code_bytes=",
+                  snapshot.readAttempted, snapshot.readAttempted ? snapshot.result : UINT32_MAX);
+    if (snapshot.bytesValid) {
+        for (auto byte : snapshot.bytes) {
+            report.append("%02X", byte);
+        }
+    } else {
+        report.append("unknown");
+    }
+    report.append(" target_code_length=%u\ntarget_code_read_policy=bounded_16_byte_snapshot\n",
+                  snapshot.bytesValid ? kSnapshotLength : 0);
+#else
+    report.append(
+        "target_code_read_attempted=0 target_code_read_result=0xFFFFFFFF\n"
+        "target_code_bytes=unknown target_code_length=0\n"
+        "target_code_read_policy=disabled_pending_region_and_mapping_lifetime_evidence\n");
+#endif
+    report.append("got_hook_install_attempted=0 got_modification=disabled\n");
 }
 } // 名前空間 yw1::companion

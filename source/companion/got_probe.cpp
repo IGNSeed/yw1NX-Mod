@@ -269,5 +269,8 @@ void appendGotReport(Report& report, const Observation& observation,
 #if YW1_COMPANION_EGL_TARGET_MEMORY
     appendTargetMemoryReport(report, observation);
 #endif
+#if YW1_COMPANION_EGL_CODE_SNAPSHOT
+    appendSnapshotReport(report, observation);
+#endif
 }
 } // 名前空間 yw1::companion
