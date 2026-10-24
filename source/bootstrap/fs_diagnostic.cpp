@@ -30,6 +30,7 @@ void runFsDiagnostic() {
     logging::recordProgress(logging::Stage::InitEnter, 0);
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
     diagnostics::setExportBootToken(svcGetSystemTick());
+    diagnostics::yw1_module_diagnostics_state.writerPolicy.store(1, std::memory_order_release);
     event("\n=== YW1 B0.1.6 boot / FS diagnostic only ===\n");
     event("source=module-bootstrap\n");
 #else

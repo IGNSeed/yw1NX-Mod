@@ -1,7 +1,7 @@
 #include <common.hpp>
 #include <lib/util/sys/cur_proc_handle.hpp>
 
-#if YW1_BOOTSTRAP_SD_LOGGING
+#if YW1_BOOTSTRAP_SD_LOGGING || YW1_BOOTSTRAP_MEMORY_LOG
 #include "logging/progress.hpp"
 #endif
 
@@ -19,7 +19,7 @@ Handle Get() {
     }
     u64 handle = 0;
     const Result result = svcGetInfo(&handle, InfoType_MesosphereCurrentProcess, INVALID_HANDLE, 0);
-#if YW1_BOOTSTRAP_SD_LOGGING
+#if YW1_BOOTSTRAP_SD_LOGGING || YW1_BOOTSTRAP_MEMORY_LOG
     yw1::logging::progress.processHandleResult.store(result, std::memory_order_release);
     yw1::logging::recordProgress(yw1::logging::Stage::ProcessHandle, result);
 #endif

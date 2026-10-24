@@ -108,6 +108,23 @@ struct Observation {
     diagnostics::ModuleSnapshot snapshot{};
 };
 
+struct Initialization {
+    int exlaunchReached = -1;
+    int mainReached = -1;
+    int exlaunchReturned = -1;
+    int directWriterEnabled = -1;
+};
+
+inline Initialization initialization(const Observation& observation) {
+    if (!observation.snapshotRead) {
+        return {};
+    }
+    const auto& state = observation.snapshot;
+    return {state.results[4] != 0 ? 1 : 0, state.results[5] == diagnostics::kPresent ? 1 : 0,
+            state.results[4] == diagnostics::kPresent ? 1 : 0,
+            state.writerPolicy == 2 ? 0 : (state.writerPolicy == 1 ? 1 : -1)};
+}
+
 struct BootstrapLog {
     diagnostics::ExportedLogHeader header{};
     alignas(8) char text[diagnostics::kExportCapacity]{};

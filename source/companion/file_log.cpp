@@ -186,9 +186,10 @@ std::uint32_t saveBootstrapLog(Report& report, BootstrapLog& bootstrap) {
         char heading[384];
         const auto headingSize = std::snprintf(
             heading, sizeof(heading),
-            "\n=== YW1 Bootstrap Export B0.1.6 "
+            "\n=== YW1 Bootstrap Export %s "
             "===\nsource=module-bootstrap\ntransport=companion-nro\n"
             "boot=%llX pid=%llu generation=%llu dropped=%u flags=%u\noriginal_memory_log_begin\n",
+            diagnostics::kDiagnosticVersion,
             static_cast<unsigned long long>(bootstrap.header.bootToken),
             static_cast<unsigned long long>(bootstrap.pid),
             static_cast<unsigned long long>(bootstrap.header.generation), bootstrap.header.dropped,

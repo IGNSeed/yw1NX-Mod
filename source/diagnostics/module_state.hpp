@@ -22,6 +22,7 @@ struct alignas(64) ModuleDiagnostics {
     std::atomic<std::uint64_t> firstNonzeroByStage[kStageCount]{};
     std::atomic<std::uint64_t> smConnectAttempts{0};
     std::atomic<std::uint64_t> writerTerminal{0};
+    std::atomic<std::uint64_t> writerPolicy{0};
 };
 
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free);

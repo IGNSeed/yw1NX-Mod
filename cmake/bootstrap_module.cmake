@@ -61,14 +61,23 @@ add_executable(yw1_bootstrap
     "${PROJECT_SOURCE_DIR}/source/bootstrap/module_memory.cpp"
     "${PROJECT_SOURCE_DIR}/source/bootstrap/process_handle.cpp")
 set_target_properties(yw1_bootstrap PROPERTIES SUFFIX ".elf")
+if(YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
+    target_sources(yw1_bootstrap PRIVATE "${PROJECT_SOURCE_DIR}/source/logging/memory_log.cpp")
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_MEMORY_LOG=1)
+    target_compile_options(yw1_bootstrap PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-fstack-usage>")
+endif()
 if(YW1_BOOTSTRAP_SD_LOGGING)
     target_sources(yw1_bootstrap PRIVATE
-        "${PROJECT_SOURCE_DIR}/source/logging/memory_log.cpp"
         "${PROJECT_SOURCE_DIR}/source/logging/ipc_fs.cpp"
         "${PROJECT_SOURCE_DIR}/source/logging/sd_writer.cpp"
         "${PROJECT_SOURCE_DIR}/source/logging/sd_logger.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_SD_LOGGING=1)
     target_compile_options(yw1_bootstrap PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-fstack-usage>")
+endif()
+if(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
+    target_sources(yw1_bootstrap PRIVATE
+        "${PROJECT_SOURCE_DIR}/source/bootstrap/exlaunch_preflight.cpp")
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC=1)
 endif()
 if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
@@ -121,6 +130,7 @@ add_custom_command(TARGET yw1_bootstrap POST_BUILD
     VERBATIM)
 if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
     add_custom_command(TARGET yw1_bootstrap POST_BUILD
+        BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/diagnostic_target.hpp"
         COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}"
             "-DELF=$<TARGET_FILE:yw1_bootstrap>"
             "-DNSO=${CMAKE_CURRENT_BINARY_DIR}/yw1_bootstrap.nso"

@@ -161,8 +161,9 @@ extern "C" void __appExit() {
 
 int main() {
     using namespace yw1::companion;
-    report.append("\n=== YW1 Diagnostics B0.1.6 ===\nsource=companion-nro\n"
-                  "title_id=0100C0000CEEA000\n");
+    report.append("\n=== YW1 Diagnostics %s ===\nsource=companion-nro\n"
+                  "title_id=0100C0000CEEA000\n",
+                  yw1::diagnostics::kDiagnosticVersion);
     report.result("sm_startup_result", smResult);
     report.result("applet_startup_result", appletResult);
     report.result("hid_startup_result", hidResult);
@@ -231,7 +232,13 @@ int main() {
                 return;
             }
             consoleClear();
-            std::printf("YW1 Diagnostics B0.1.6\nsource=companion-nro\n\n");
+            std::printf("YW1 Diagnostics %s\nsource=companion-nro\n\n",
+                        yw1::diagnostics::kDiagnosticVersion);
+            const auto init = initialization(observation);
+            std::printf("exlaunch_init_reached=%d exl_main_reached=%d\n"
+                        "exlaunch_init_returned=%d direct_fs_writer_enabled=%d\n",
+                        init.exlaunchReached, init.mainReached, init.exlaunchReturned,
+                        init.directWriterEnabled);
             std::printf("Bootstrap read: %08X save: %08X duplicate skipped: %s\n",
                         bootstrapLog.readResult, exportSaveResult,
                         bootstrapLog.duplicate ? "yes" : "no");

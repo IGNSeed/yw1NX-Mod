@@ -19,7 +19,14 @@ option(YW1_BOOTSTRAP_SD_LOGGING "Enable the bounded independent SD logging worke
 option(YW1_BOOTSTRAP_FS_DIAGNOSTIC "Isolate FS diagnostics from exlaunch initialization" OFF)
 option(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS "Expose the bounded B.0.1.5 diagnostic ABI" OFF)
 option(YW1_BUILD_DIAGNOSTICS_COMPANION "Build the read-only diagnostics NRO" OFF)
-if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS AND NOT YW1_BOOTSTRAP_FS_DIAGNOSTIC)
+option(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC "Verify exlaunch initialization without a direct FS writer" OFF)
+if(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC AND
+    (NOT YW1_BUILD_BOOTSTRAP OR NOT YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS OR
+     YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_FS_DIAGNOSTIC))
+    message(FATAL_ERROR "Exlaunch diagnostics require bootstrap/external diagnostics and disable FS profiles")
+endif()
+if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS AND NOT YW1_BOOTSTRAP_FS_DIAGNOSTIC AND
+    NOT YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
     message(FATAL_ERROR "External diagnostics require the isolated FS diagnostic module")
 endif()
 if(YW1_BUILD_DIAGNOSTICS_COMPANION AND NOT YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)

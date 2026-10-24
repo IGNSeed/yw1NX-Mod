@@ -14,6 +14,7 @@ enum class Stage : std::uint32_t {
     Exlaunch,
     ExlMain,
     InitReturn,
+    ExlaunchGuard,
     RwMap = 8,
     RwUnmap,
     WorkerCreate = 16,

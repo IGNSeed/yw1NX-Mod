@@ -222,6 +222,11 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
         return;
     }
     observation.snapshotRead = true;
+    const auto init = initialization(observation);
+    report.append("exlaunch_init_reached=%d exl_main_reached=%d exlaunch_init_returned=%d\n"
+                  "direct_fs_writer_enabled=%d\n",
+                  init.exlaunchReached, init.mainReached, init.exlaunchReturned,
+                  init.directWriterEnabled);
     observation.dtInitReached = observation.snapshot.results[1] == 0 ? 0 : 1;
     report.append("snapshot_consistency=independent_atomic_words\n");
     report.append("latest_stage=%llu last_result=0x%08X\n",
