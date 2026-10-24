@@ -86,6 +86,15 @@ if(YW1_BOOTSTRAP_EGL_DIAGNOSTIC)
     target_link_libraries(yw1_bootstrap PRIVATE yw1nx_foundation)
     target_link_options(yw1_bootstrap PRIVATE -Wl,--undefined=yw1_egl_diagnostics)
 endif()
+if(YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC)
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC=1)
+    # 準備実装はAArch64でコンパイルするが、実機NSOへリンク・自動実行しない。
+    add_library(yw1_safe_hook_preparation STATIC source/hooking/safe_hook_installer.cpp)
+    target_link_libraries(yw1_safe_hook_preparation PRIVATE yw1nx_foundation)
+    target_compile_features(yw1_safe_hook_preparation PRIVATE cxx_std_20)
+    target_compile_options(yw1_safe_hook_preparation PRIVATE
+        -Wall -Wextra -Werror -fno-exceptions -fno-rtti -fPIC)
+endif()
 if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
         "${PROJECT_SOURCE_DIR}/source/bootstrap/fs_diagnostic.cpp")

@@ -73,7 +73,11 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     // Writerをリンクしないprofileなので、exlaunch完了とは独立に外部回収を許可する。
     recordWriterTerminal(3);
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+#if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
+    writeLog("\n=== YW1 B0.2.1 boot / safe hook prerequisites ===\nsource=module-bootstrap\n");
+#else
     writeLog("\n=== YW1 B0.2 boot / EGL prerequisite diagnostics ===\nsource=module-bootstrap\n");
+#endif
 #else
     writeLog("\n=== YW1 B0.1.7 boot / exlaunch verification ===\nsource=module-bootstrap\n");
 #endif

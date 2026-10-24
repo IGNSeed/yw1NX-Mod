@@ -10,7 +10,7 @@ constinit Result fsResult = yw1::companion::kNotAttempted;
 constinit yw1::companion::Report report;
 constinit yw1::companion::BootstrapLog bootstrapLog;
 
-bool consoleReady(const PrintConsole *screen) {
+bool consoleReady(const PrintConsole* screen) {
     return screen != nullptr && screen->consoleInitialised && screen->renderer != nullptr &&
            screen->renderer->drawChar != nullptr && screen->renderer->scrollWindow != nullptr &&
            screen->renderer->flushAndSwap != nullptr && screen->renderer->deinit != nullptr;
@@ -19,7 +19,7 @@ bool consoleReady(const PrintConsole *screen) {
 // 標準__appInitのWindow準備を、abortする内部entryを使わず実Resultで実行する。
 class WindowSession {
   public:
-    Result initialize(yw1::companion::Report &log) {
+    Result initialize(yw1::companion::Report& log) {
         auto rc = log.result("vi_initialize_result", viInitialize(ViServiceType_Default));
         if (rc != 0) {
             return rc;
@@ -51,7 +51,7 @@ class WindowSession {
         windowReady_ = true;
         return log.result("nwindow_dimensions_result", nwindowSetDimensions(window_, 1280, 720));
     }
-    void close(yw1::companion::Report &log) {
+    void close(yw1::companion::Report& log) {
         if (windowReady_) {
             nwindowClose(window_);
             windowReady_ = false;
@@ -75,7 +75,7 @@ class WindowSession {
   private:
     ViDisplay display_{};
     ViLayer layer_{};
-    NWindow *window_ = nullptr;
+    NWindow* window_ = nullptr;
     bool viReady_ = false;
     bool displayReady_ = false;
     bool layerReady_ = false;
@@ -83,7 +83,7 @@ class WindowSession {
 };
 
 // 保存失敗時も、全Resultを画面から回収できるように固定幅でページ分割する。
-std::size_t showDetails(PrintConsole *screen, std::size_t page) {
+std::size_t showDetails(PrintConsole* screen, std::size_t page) {
     if (!consoleReady(screen)) {
         return 0;
     }
@@ -110,16 +110,16 @@ std::size_t showDetails(PrintConsole *screen, std::size_t page) {
     return row / 30;
 }
 } // 無名名前空間
-extern "C" Result __real_framebufferCreate(Framebuffer *, NWindow *, u32, u32, u32, u32);
-extern "C" Result __real_framebufferMakeLinear(Framebuffer *);
+extern "C" Result __real_framebufferCreate(Framebuffer*, NWindow*, u32, u32, u32, u32);
+extern "C" Result __real_framebufferMakeLinear(Framebuffer*);
 
 // NRO自身の呼出しだけを包み、SDKの実Resultをそのまま記録・返却する。
-extern "C" Result __wrap_framebufferCreate(Framebuffer *fb, NWindow *window, u32 width, u32 height,
+extern "C" Result __wrap_framebufferCreate(Framebuffer* fb, NWindow* window, u32 width, u32 height,
                                            u32 format, u32 count) {
     return report.result("framebuffer_create_result",
                          __real_framebufferCreate(fb, window, width, height, format, count));
 }
-extern "C" Result __wrap_framebufferMakeLinear(Framebuffer *fb) {
+extern "C" Result __wrap_framebufferMakeLinear(Framebuffer* fb) {
     return report.result("framebuffer_linear_result", __real_framebufferMakeLinear(fb));
 }
 
@@ -179,13 +179,13 @@ int main() {
                   observation.moduleDetected, observation.dtInitReached, observation.result);
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
-        const auto &state = observation.snapshot;
+        const auto& state = observation.snapshot;
         writerActive = state.writerTerminal != 1 && state.writerTerminal != 3;
     }
     FileOutcome file;
     std::size_t savedThrough = 0;
     // UIの初期化前に実診断結果を保存する。以後のcheckpointも固定回数だけ追記する。
-    const auto persist = [&](const char *phase) {
+    const auto persist = [&](const char* phase) {
         report.append("nro_phase=%s first_anomaly_result=0x%08X\n", phase, report.firstAnomaly);
         if (fsResult == 0 && !writerActive) {
             file = saveReport(report, savedThrough);
@@ -207,7 +207,7 @@ int main() {
     }
     persist("ui_init_begin");
     WindowSession window;
-    PrintConsole *screen = nullptr;
+    PrintConsole* screen = nullptr;
     bool consoleAttempted = false;
     if (appletResult == 0) {
         if (window.initialize(report) == 0) {
@@ -286,7 +286,18 @@ int main() {
                 std::printf("Game EGL values: unknown\n");
                 return;
             }
-            const auto &egl = observation.egl;
+            const auto& egl = observation.egl;
+#if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
+            const auto& hook = egl.installer;
+            std::printf("Installer Status (MOD): %u Selected Hook Backend: %u\n"
+                        "Preflight: %08X Original Prepared: %08X\n"
+                        "Thread Safety: %s Commit Attempted: %u\n"
+                        "Blocked Reason (MOD): %08X Active: %u\n",
+                        static_cast<unsigned>(hook.state), static_cast<unsigned>(hook.backend),
+                        hook.preflight, hook.trampoline,
+                        hook.quiescenceVerified ? "verified" : "unverified", hook.commitAttempted,
+                        hook.blockedReason, hook.active);
+#endif
             std::printf("Hook attempted: %u result: %08X\nGuard: %u blocked reason: %u\n"
                         "Callback: %llu Original calls/returns: %llu / %llu\n",
                         egl.installAttempted, egl.installResult, egl.guardStatus, egl.blockedReason,

@@ -18,7 +18,7 @@ static_assert(sizeof(ProcessReply) == 32);
 static_assert(sizeof(LoaderModuleInfo) == sizeof(ModuleRecord));
 static_assert(sizeof(diagnostics::ModuleSnapshot) == kStateSize);
 
-void inspectCheatService(Report &report) {
+void inspectCheatService(Report& report) {
     Service service{};
     const auto result = report.result("dmnt_init_result", smGetService(&service, "dmnt:cht"));
     if (result != 0) {
@@ -32,10 +32,10 @@ void inspectCheatService(Report &report) {
 
 class BoundReader {
   public:
-    BoundReader(Handle process, const ModuleRecord &module, Report &report)
+    BoundReader(Handle process, const ModuleRecord& module, Report& report)
         : process_(process), module_(module), report_(report) {}
 
-    Result read(std::uint64_t offset, void *output, std::size_t size) {
+    Result read(std::uint64_t offset, void* output, std::size_t size) {
         if (quarantined_ || output == nullptr || !validRead(module_, offset, size)) {
             return kInvalidData;
         }
@@ -46,7 +46,7 @@ class BoundReader {
         const auto source = module_.base + offset;
         const auto page = source & ~std::uint64_t{4095};
         virtmemLock();
-        auto *destination = virtmemFindAslr(4096, 4096);
+        auto* destination = virtmemFindAslr(4096, 4096);
         if (destination == nullptr) {
             virtmemUnlock();
             return kNoAddress;
@@ -58,11 +58,11 @@ class BoundReader {
             return mapped;
         }
         // 対象のpermission/dataは変更しない。aliasにもstoreせず整列wordをacquire読取する。
-        const auto *words = reinterpret_cast<const std::uint64_t *>(
-            static_cast<const unsigned char *>(destination) + source - page);
+        const auto* words = reinterpret_cast<const std::uint64_t*>(
+            static_cast<const unsigned char*>(destination) + source - page);
         for (std::size_t i = 0; i < size / 8; ++i) {
             const auto value = __atomic_load_n(words + i, __ATOMIC_ACQUIRE);
-            std::memcpy(static_cast<unsigned char *>(output) + i * 8, &value, 8);
+            std::memcpy(static_cast<unsigned char*>(output) + i * 8, &value, 8);
         }
         const auto unmapped = svcUnmapProcessMemory(destination, process_, page, 4096);
         report_.result("unmap_process_memory_result", unmapped);
@@ -71,16 +71,18 @@ class BoundReader {
         return unmapped;
     }
 
-    bool quarantined() const { return quarantined_; }
+    bool quarantined() const {
+        return quarantined_;
+    }
 
   private:
     Handle process_;
     ModuleRecord module_;
-    Report &report_;
+    Report& report_;
     bool quarantined_ = false;
 };
 
-void readBootstrapLog(BoundReader &reader, Report &report, BootstrapLog &output) {
+void readBootstrapLog(BoundReader& reader, Report& report, BootstrapLog& output) {
     output.readResult = kExportChanged;
     for (unsigned attempt = 0; attempt < 2; ++attempt) {
         diagnostics::ExportedLogHeader before{}, after{};
@@ -126,8 +128,8 @@ void readBootstrapLog(BoundReader &reader, Report &report, BootstrapLog &output)
     }
 }
 
-void inspectBoundProcess(Report &report, Observation &observation, Handle process,
-                         BootstrapLog *bootstrap) {
+void inspectBoundProcess(Report& report, Observation& observation, Handle process,
+                         BootstrapLog* bootstrap) {
     const auto pointerBytes = ldrDmntGetServiceSession()->pointer_buffer_size;
     const auto capacity = loaderCapacity(pointerBytes);
     report.append("loader_pointer_buffer_bytes=%u loader_requested_capacity=%zu\n",
@@ -237,16 +239,39 @@ void inspectBoundProcess(Report &report, Observation &observation, Handle proces
         if (payload[0] == 0 || (payload[0] & 1) != 0 || payload[0] != after) {
             continue;
         }
-        std::memcpy(static_cast<void *>(&observation.egl), payload + 1, sizeof(observation.egl));
+        std::memcpy(static_cast<void*>(&observation.egl), payload + 1, sizeof(observation.egl));
         observation.eglReadResult = diagnostics::validEglWire(observation.egl) ? 0 : kInvalidData;
         break;
     }
     observation.cleanupFailed = reader.quarantined();
     report.result("egl_diagnostic_read_result", observation.eglReadResult);
     report.append(
-        "\n=== YW1 EGL Snapshot B0.2 ===\nsource=module-bootstrap\ntransport=companion-nro\n");
+        "\n=== YW1 EGL Snapshot %s ===\nsource=module-bootstrap\ntransport=companion-nro\n",
+        diagnostics::kDiagnosticVersion);
     if (observation.eglReadResult == 0) {
-        const auto &egl = observation.egl;
+        const auto& egl = observation.egl;
+#if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
+        const auto& hook = egl.installer;
+        report.append("\n=== YW1 Hook Installer B0.2.1 "
+                      "===\nsource=module-bootstrap\ntransport=companion-nro\n"
+                      "hook_backend=%u hook_state=%u "
+                      "hook_result_namespace=mod_preflight_platform_operations\n"
+                      "hook_preflight_result=0x%08X hook_target_identity_result=0x%08X "
+                      "hook_target_instruction_result=0x%08X\n"
+                      "hook_trampoline_prepare_result=0x%08X hook_original_publish_result=0x%08X\n"
+                      "hook_thread_quiescence_verified=%u hook_mapping_result=0x%08X "
+                      "hook_cache_sync_result=0x%08X\n"
+                      "hook_commit_attempted=%u hook_commit_result=0x%08X "
+                      "hook_rollback_attempted=%u hook_rollback_result=0x%08X\n"
+                      "hook_active=%u hook_blocked_reason=0x%08X hook_cleanup_result=0x%08X\n"
+                      "hook_resources_retained=%u hook_lease_release_result=0x%08X\n",
+                      static_cast<unsigned>(hook.backend), static_cast<unsigned>(hook.state),
+                      hook.preflight, hook.identity, hook.instructions, hook.trampoline,
+                      hook.publish, hook.quiescenceVerified, hook.mapping, hook.cache,
+                      hook.commitAttempted, hook.commit, hook.rollbackAttempted, hook.rollback,
+                      hook.active, hook.blockedReason, hook.cleanup, hook.resourcesRetained,
+                      hook.leaseRelease);
+#endif
         report.append("egl_hook_install_attempted=%u egl_hook_install_result=0x%08X\n"
                       "egl_hook_guard_status=%u egl_hook_blocked_reason=%u\n"
                       "egl_hook_callback_count=%llu egl_hook_original_call_count=%llu "
@@ -354,7 +379,7 @@ void inspectBoundProcess(Report &report, Observation &observation, Handle proces
 }
 
 } // 無名名前空間
-Observation inspectTarget(Report &report, BootstrapLog *bootstrap) {
+Observation inspectTarget(Report& report, BootstrapLog* bootstrap) {
     Observation observation;
     const auto pm = report.result("pm_init_result", pmdmntInitialize());
     if (pm != 0) {

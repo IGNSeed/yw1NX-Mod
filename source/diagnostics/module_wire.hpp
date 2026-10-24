@@ -8,7 +8,10 @@ namespace yw1::diagnostics {
 constexpr std::uint64_t kIdentityMagic = 0x3544494D315759ULL;
 constexpr std::uint64_t kStateMagic = 0x3554534D315759ULL;
 constexpr std::uint64_t kTitleId = 0x0100C0000CEEA000;
-#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+#if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
+constexpr std::uint64_t kBuildTag = 0xB0021;
+constexpr char kDiagnosticVersion[] = "B0.2.1";
+#elif YW1_BOOTSTRAP_EGL_DIAGNOSTIC
 constexpr std::uint64_t kBuildTag = 0xB002;
 constexpr char kDiagnosticVersion[] = "B0.2";
 #elif YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC
