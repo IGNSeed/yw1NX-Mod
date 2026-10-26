@@ -280,6 +280,9 @@ int main() {
         bool targetMemoryPage = false;
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
         bool codeSnapshotPage = false;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+        unsigned codeSnapshotPart = 0;
+#endif
 #endif
 #endif
         const auto showGot = [&] {
@@ -392,9 +395,46 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
-            std::printf("EGL GOT Code Snapshot B0.2.4\nSource: game process  Mode: read-only\n"
+            std::printf("EGL GOT Code Snapshot %s\nSource: game process  Mode: read-only\n"
                         "GOT Read: %08X Target Query: %08X\n",
-                        got.readResult, got.memory.queryResult);
+                        kCompanionVersion, got.readResult, got.memory.queryResult);
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+            if (codeSnapshotPart == 1) {
+                std::printf("HEX page - fixed maximum %u bytes\nValid: %s Quarantined: %s\n",
+                            kSnapshotLength, targetBoolean(snapshot.bytesValid),
+                            targetBoolean(snapshot.cleanupQuarantined));
+                if (snapshot.bytesValid) {
+                    for (unsigned i = 0; i < kSnapshotLength; ++i) {
+                        if (i % 16 == 0) { std::printf("+%02X: ", i); }
+                        std::printf("%02X%s", snapshot.bytes[i],
+                                    i % 16 == 15 ? "\n" : (i % 4 == 3 ? " " : ""));
+                    }
+                } else {
+                    std::printf("Bytes: unknown (snapshot rejected)\n");
+                }
+                std::printf("No target execution or branch following.\n"
+                            "Hook Active: no GOT Modification: disabled\n"
+                            "A: summary L: Snapshot status B: back\n");
+                return;
+            }
+            std::printf("PID: %llu Expected Title ID: %016llX\nInitial Main Full Build ID Verified: %s\n"
+                        "Before PID/Title/Main: %08X/%08X/%08X\n"
+                        "After PID/Title/Main: %08X/%08X/%08X\n",
+                        static_cast<unsigned long long>(observation.pid),
+                        static_cast<unsigned long long>(yw1::diagnostics::kTitleId),
+                        targetBoolean(got.mainVerified), snapshot.beforePid, snapshot.beforeTitle,
+                        snapshot.beforeMain, snapshot.afterPid, snapshot.afterTitle,
+                        snapshot.afterMain);
+            if (got.rtldKnown && got.memory.regionValid) {
+                const auto relative = relativeAddress(got.memory.region.base, got.rtldBase);
+                std::printf("RTLD: %016llX Region/RTLD: %s0x%llX\n",
+                            static_cast<unsigned long long>(got.rtldBase),
+                            relative.negative ? "-" : "+",
+                            static_cast<unsigned long long>(relative.magnitude));
+            } else {
+                std::printf("RTLD / Region Relative: unknown\n");
+            }
+#endif
             if (got.valueKnown) {
                 const auto relative = relativeAddress(got.slotValue, got.mainBase);
                 std::printf("Target: %016llX Main Relative: %s0x%llX\n",
@@ -422,9 +462,10 @@ int main() {
             stage("Read", snapshot.read);
             stage("Unmap", snapshot.unmap);
             stage("Postvalidation", snapshot.postvalidation);
-            std::printf("Snapshot Valid: %s Quarantined: %s\nLength: 16 Bytes:\n",
+            std::printf("Snapshot Valid: %s Quarantined: %s\nLength: %u\n",
                         targetBoolean(snapshot.bytesValid),
-                        targetBoolean(snapshot.cleanupQuarantined));
+                        targetBoolean(snapshot.cleanupQuarantined), kSnapshotLength);
+#if !YW1_COMPANION_EGL_CODE_ATTRIBUTION
             if (snapshot.bytesValid) {
                 for (unsigned i = 0; i < kSnapshotLength; ++i) {
                     std::printf("%02X%s", snapshot.bytes[i],
@@ -433,6 +474,9 @@ int main() {
             } else {
                 std::printf("unknown\n");
             }
+#else
+            std::printf("R: HEX page (accepted bytes only)\n");
+#endif
             std::printf("Consistency: %s\nNo target execution or branch following.\n"
                         "Hook Active: no GOT Modification: disabled\n"
                         "Snapshot does not verify owner or hook safety.\n"
@@ -555,6 +599,9 @@ int main() {
                         details = true;
                     }
                     codeSnapshotPage = false;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+                    codeSnapshotPart = 0;
+#endif
 #endif
                     if (targetMemoryPage) {
                         details = true;
@@ -584,6 +631,15 @@ int main() {
 #if YW1_COMPANION_EGL_TARGET_MEMORY
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
                 else if (codeSnapshotPage) {
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+                    if ((down & HidNpadButton_R) && codeSnapshotPart == 0) {
+                        codeSnapshotPart = 1;
+                        showCodeSnapshot();
+                    } else if ((down & HidNpadButton_L) && codeSnapshotPart == 1) {
+                        codeSnapshotPart = 0;
+                        showCodeSnapshot();
+                    } else
+#endif
                     if (down & HidNpadButton_L) {
                         codeSnapshotPage = false;
                         targetMemoryPage = true;

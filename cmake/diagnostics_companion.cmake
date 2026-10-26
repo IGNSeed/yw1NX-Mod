@@ -38,6 +38,10 @@ if(YW1_COMPANION_EGL_CODE_SNAPSHOT)
     target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_EGL_CODE_SNAPSHOT=1)
     set(yw1_diagnostic_version "B0.2.4")
 endif()
+if(YW1_COMPANION_EGL_CODE_ATTRIBUTION)
+    target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_EGL_CODE_ATTRIBUTION=1)
+    set(yw1_diagnostic_version "B0.2.5")
+endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)

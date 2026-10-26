@@ -81,6 +81,13 @@ std::uint32_t validateGotRead(std::uint64_t pid, std::uint64_t title,
         return kInvalidData;
     }
     output.slotAddress = *address;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+    const auto rtld = findModule(modules.data(), modules.size(), kRtldId.data());
+    if (rtld >= 0 && validModule(modules[rtld])) {
+        output.rtldBase = modules[rtld].base;
+        output.rtldKnown = true;
+    }
+#endif
     return 0;
 }
 

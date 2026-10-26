@@ -70,12 +70,12 @@ class BoundReader {
         // Kernelが保持したphysical pageのaliasだけを読む。source/aliasへのstoreは行わない。
         const auto* words = reinterpret_cast<const std::uint32_t*>(
             static_cast<const unsigned char*>(destination) + checked.pageOffset);
-        std::array<std::uint32_t, 4> first{}, second{};
+        std::array<std::uint32_t, kSnapshotLength / 4> first{}, second{};
         output.readAttempted = true;
-        for (std::size_t i = 0; i < 4; ++i) {
+        for (std::size_t i = 0; i < first.size(); ++i) {
             first[i] = __atomic_load_n(words + i, __ATOMIC_ACQUIRE);
         }
-        for (std::size_t i = 0; i < 4; ++i) {
+        for (std::size_t i = 0; i < second.size(); ++i) {
             second[i] = __atomic_load_n(words + i, __ATOMIC_ACQUIRE);
         }
         output.readsMatched = first == second;
@@ -230,6 +230,32 @@ Result revalidateSnapshot(BoundReader& reader, Handle process, const ModuleRecor
     if (title != expectedTitle) {
         return kWrongTarget;
     }
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+    auto& mainResult = before ? output.beforeMain : output.afterMain;
+    // 同じPIDのLoader記録を毎回取り直し、完全ID・base・sizeを初回のMainと照合する。
+    const auto capacity = loaderCapacity(ldrDmntGetServiceSession()->pointer_buffer_size);
+    if (capacity == 0) {
+        return mainResult = kUnavailable;
+    }
+    LoaderModuleInfo raw[kLoaderQueryCapacity]{};
+    s32 count = 0;
+    mainResult = ldrDmntGetProcessModuleInfo(expectedPid, raw, static_cast<int>(capacity), &count);
+    if (mainResult != 0) {
+        return mainResult;
+    }
+    if (count <= 0 || static_cast<std::size_t>(count) >= capacity) {
+        return mainResult = kInvalidData;
+    }
+    ModuleRecord modules[kLoaderQueryCapacity]{};
+    std::memcpy(modules, raw, sizeof(modules));
+    const auto index = findModule(modules, count, diagnostics::kMainBuildId);
+    if (index < 0) {
+        return mainResult = index == -1 ? kWrongTarget : kInvalidData;
+    }
+    if (modules[index].base != main.base || modules[index].size != main.size) {
+        return mainResult = kSnapshotChanged;
+    }
+#endif
     gotResult = reader.readGot(main, value);
     if (gotResult != 0) {
         return gotResult;

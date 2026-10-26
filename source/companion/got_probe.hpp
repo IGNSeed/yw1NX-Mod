@@ -39,6 +39,10 @@ struct GotObservation {
     std::uint32_t pageQueryResult = UINT32_MAX, targetQueryResult = UINT32_MAX;
     bool attempted = false, mainVerified = false, valueKnown = false, normalizedKnown = false;
     std::uint64_t mainBase = 0, slotAddress = 0, slotValue = 0, targetOffset = 0;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+    std::uint64_t rtldBase = 0;
+    bool rtldKnown = false;
+#endif
     std::array<std::uint8_t, 32> targetId{};
     int targetIndex = -1, matchesExpected = -1, executable = -1;
     std::uint32_t pagePermission = UINT32_MAX, targetPermission = UINT32_MAX;

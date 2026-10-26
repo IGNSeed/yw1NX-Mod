@@ -11,7 +11,12 @@ struct Observation;
 constexpr std::uint32_t kSnapshotChanged = 0xE109;
 constexpr std::uint32_t kSnapshotUnsupported = 0xE10A;
 constexpr std::uint32_t kSnapshotMismatch = 0xE10B;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+constexpr std::uint32_t kSnapshotLength = 64;
+#else
 constexpr std::uint32_t kSnapshotLength = 16;
+#endif
+static_assert(kSnapshotLength <= 64 && kSnapshotLength % 4 == 0);
 
 struct CodeSnapshot {
     std::uint32_t result = UINT32_MAX, preflight = UINT32_MAX, revalidation = UINT32_MAX;
@@ -21,6 +26,9 @@ struct CodeSnapshot {
     std::uint32_t beforeGot = UINT32_MAX, beforeQuery = UINT32_MAX;
     std::uint32_t afterPid = UINT32_MAX, afterTitle = UINT32_MAX;
     std::uint32_t afterGot = UINT32_MAX, afterQuery = UINT32_MAX;
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+    std::uint32_t beforeMain = UINT32_MAX, afterMain = UINT32_MAX;
+#endif
     bool preflightAttempted = false, mapAttempted = false, readAttempted = false;
     bool unmapAttempted = false, cleanupQuarantined = false, bytesValid = false;
     bool readsMatched = false;

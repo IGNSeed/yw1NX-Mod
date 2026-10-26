@@ -56,10 +56,10 @@ void appendSnapshotReport(Report& report, const Observation& observation) {
     const auto& got = observation.got;
     const auto& snapshot = got.snapshot;
     const auto& memory = got.memory;
-    report.append("\n=== YW1 EGL GOT Code Snapshot B0.2.4 ===\nsource=companion-nro\n"
+    report.append("\n=== YW1 EGL GOT Code Snapshot %s ===\nsource=companion-nro\n"
                   "mode=read-only observation_stage=album_snapshot\n"
                   "snapshot_preflight_attempted=%u\n",
-                  snapshot.preflightAttempted);
+                  kCompanionVersion, snapshot.preflightAttempted);
     report.result("snapshot_result", snapshot.result);
     report.result("snapshot_preflight_result", snapshot.preflight);
     if (got.valueKnown) {
@@ -87,7 +87,30 @@ void appendSnapshotReport(Report& report, const Observation& observation) {
     } else {
         report.append("snapshot_page_address=unknown snapshot_page_offset=unknown\n");
     }
-    report.append("snapshot_length=16\n");
+    report.append("snapshot_length=%u\n", kSnapshotLength);
+#if YW1_COMPANION_EGL_CODE_ATTRIBUTION
+    report.append("snapshot_pid=%llu snapshot_expected_title=%016llX\n"
+                  "snapshot_initial_main_build_id_verified=%s\n",
+                  static_cast<unsigned long long>(observation.pid),
+                  static_cast<unsigned long long>(diagnostics::kTitleId),
+                  targetBoolean(got.mainVerified));
+    report.result("snapshot_before_main_result", snapshot.beforeMain);
+    report.result("snapshot_after_main_result", snapshot.afterMain);
+    report.append("snapshot_main_validation=full_build_id_base_size_from_loader\n");
+    if (got.rtldKnown && memory.regionValid && got.valueKnown) {
+        const auto target = relativeAddress(got.slotValue, got.rtldBase);
+        const auto region = relativeAddress(memory.region.base, got.rtldBase);
+        report.append("snapshot_rtld_base=0x%016llX\n"
+                      "snapshot_target_relative_to_rtld=%s0x%llX\n"
+                      "snapshot_region_relative_to_rtld=%s0x%llX\n",
+                      static_cast<unsigned long long>(got.rtldBase),
+                      target.negative ? "-" : "+", static_cast<unsigned long long>(target.magnitude),
+                      region.negative ? "-" : "+", static_cast<unsigned long long>(region.magnitude));
+    } else {
+        report.append("snapshot_rtld_base=unknown snapshot_target_relative_to_rtld=unknown\n"
+                      "snapshot_region_relative_to_rtld=unknown\n");
+    }
+#endif
     report.result("snapshot_revalidation_result", snapshot.revalidation);
     report.result("snapshot_before_pid_result", snapshot.beforePid);
     report.result("snapshot_before_title_result", snapshot.beforeTitle);

@@ -173,8 +173,8 @@ void appendTargetMemoryReport(Report& report, const Observation& observation) {
     } else {
         report.append("unknown");
     }
-    report.append(" target_code_length=%u\ntarget_code_read_policy=bounded_16_byte_snapshot\n",
-                  snapshot.bytesValid ? kSnapshotLength : 0);
+    report.append(" target_code_length=%u\ntarget_code_read_policy=bounded_%u_byte_snapshot\n",
+                  snapshot.bytesValid ? kSnapshotLength : 0, kSnapshotLength);
 #else
     report.append(
         "target_code_read_attempted=0 target_code_read_result=0xFFFFFFFF\n"
