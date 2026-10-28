@@ -2,9 +2,17 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+#include "render/memory_contract.hpp"
+#endif
 
 namespace yw1::diagnostics {
-constexpr std::uint64_t kRenderMagic = 0x32314449315759, kRenderAbi = 2, kRenderTag = 0xB00212;
+constexpr std::uint64_t kRenderMagic = 0x32314449315759;
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+constexpr std::uint64_t kRenderAbi = 3, kRenderTag = 0xB00213;
+#else
+constexpr std::uint64_t kRenderAbi = 2, kRenderTag = 0xB00212;
+#endif
 enum class RenderField : unsigned {
     Magic, Abi, Size, BuildTag, Profile, Mode, Stage, DisableReason, Callbacks, Skips, Busy,
     ContextChecks, ContextChanges, Context, Display, DrawSurface, ReadSurface, Thread, Api,
@@ -13,7 +21,13 @@ enum class RenderField : unsigned {
     GlRejected, GlFirstFailure, GlResult, InitAttempts, ImGuiContexts, NewFrames, DrawSubmitted,
     Shader, Font, Buffer, StateSaves, StateRestores, StateFailures, BackendFailure,
     MemoryContractProven, PointerCallsAllowed, ThreadResult, BindingResult,
-    GlVerifiedMask, GlRejectedMask, OwnerContext, OwnerThread, Reserved53
+    GlVerifiedMask, GlRejectedMask, OwnerContext, OwnerThread,
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    ArenaAttempts, ArenaLargestAllocation, ArenaLastFailedRequest, ArenaLargestFree,
+    ArenaReserved, NativeMemoryBlockMask, NativeMemoryAdmitted, Reserved60
+#else
+    Reserved53
+#endif
 };
 enum class RenderStage : std::uint64_t { Disabled, Waiting, Context, Allocator, Resolver, Admission };
 enum class RenderDisable : std::uint64_t {
@@ -36,6 +50,9 @@ constexpr RenderWire initialRenderWire(unsigned profile, unsigned mode) {
     w[F::DisableReason] = static_cast<unsigned>(profile == 3 ? RenderDisable::None : RenderDisable::Profile);
     w[F::GlRequired] = 60; w[F::GlFirstFailure] = UINT32_MAX; w[F::ThreadResult] = UINT32_MAX;
     w[F::GlResult] = UINT32_MAX; w[F::BindingResult] = UINT32_MAX;
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    w[F::NativeMemoryBlockMask] = render::nativeMemoryBlockMask(mode);
+#endif
     return w;
 }
 struct RenderPublication {

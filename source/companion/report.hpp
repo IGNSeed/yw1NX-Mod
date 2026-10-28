@@ -27,7 +27,11 @@
 namespace yw1::companion {
 
 #if YW1_RENDER_DIAGNOSTICS
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+constexpr char kCompanionVersion[] = "B0.2.13";
+#else
 constexpr char kCompanionVersion[] = "B0.2.12";
+#endif
 #elif YW1_IMGUI_DEMO_DIAGNOSTICS
 constexpr char kCompanionVersion[] = "B0.2.11";
 #elif YW1_EGL_GETTER_WHITELIST

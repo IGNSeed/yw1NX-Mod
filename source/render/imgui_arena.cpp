@@ -21,14 +21,17 @@ bool ImGuiArena::valid(std::size_t offset, const Block& b) const {
         b.requested <= b.span - sizeof(Block);
 }
 void* ImGuiArena::allocate(std::size_t size) {
+    ++stats_.attempts;
     if (!size || size > SIZE_MAX - (kAlign - 1) - sizeof(Block)) {
-        ++stats_.failures; return nullptr;
+        ++stats_.failures; stats_.lastFailedRequest = size; return nullptr;
     }
     const auto payload = (size + kAlign - 1) / kAlign * kAlign;
     const auto need = payload + sizeof(Block);
     for (std::size_t offset = 0; offset + sizeof(Block) <= storage_.size();) {
         auto* b = block(offset);
-        if (!valid(offset, *b)) { ++stats_.failures; return nullptr; }
+        if (!valid(offset, *b)) {
+            ++stats_.failures; stats_.lastFailedRequest = size; return nullptr;
+        }
         if (!b->allocated && b->span >= need) {
             if (b->span - need >= sizeof(Block) + kAlign) {
                 ::new (storage_.data() + offset + need) Block{b->span - need, 0, kMagic, 0};
@@ -37,12 +40,14 @@ void* ImGuiArena::allocate(std::size_t size) {
             b->allocated = 1; b->requested = size;
             stats_.used += size; stats_.reserved += b->span;
             if (stats_.used > stats_.peak) { stats_.peak = stats_.used; }
+            if (size > stats_.largestAllocation) { stats_.largestAllocation = size; }
             ++stats_.allocations; ++stats_.live;
             return storage_.data() + offset + sizeof(Block);
         }
         offset += b->span;
     }
     ++stats_.failures;
+    stats_.lastFailedRequest = size;
     return nullptr;
 }
 bool ImGuiArena::release(void* pointer) {
@@ -58,12 +63,15 @@ bool ImGuiArena::release(void* pointer) {
         if (!valid(offset, *b)) { ++stats_.invalidFrees; return false; }
         if (storage_.data() + offset + sizeof(Block) == pointer) {
             if (!b->allocated) { ++stats_.invalidFrees; return false; }
+            const auto nextOffset = offset + b->span;
+            if (nextOffset + sizeof(Block) <= storage_.size() &&
+                !valid(nextOffset, *block(nextOffset))) {
+                ++stats_.invalidFrees; return false;
+            }
             stats_.used -= b->requested; stats_.reserved -= b->span;
             ++stats_.frees; --stats_.live; b->allocated = 0; b->requested = 0;
-            const auto nextOffset = offset + b->span;
             if (nextOffset + sizeof(Block) <= storage_.size()) {
                 auto* next = block(nextOffset);
-                if (!valid(nextOffset, *next)) { ++stats_.invalidFrees; return false; }
                 if (!next->allocated) { b->span += next->span; }
             }
             if (previous && !previous->allocated) { previous->span += b->span; }

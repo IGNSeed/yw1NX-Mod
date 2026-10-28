@@ -59,7 +59,19 @@ bool validRenderWire(const RenderWire& w, unsigned expectedProfile, unsigned exp
         std::popcount(w[F::GlVerifiedMask]) != w[F::GlVerified] ||
         std::popcount(w[F::GlRejectedMask]) != w[F::GlRejected] ||
         (!w[F::LoaderAttempts] && w[F::GlResult] != UINT32_MAX)) { return false; }
-    for (unsigned i = static_cast<unsigned>(F::Reserved53); i < w.words.size(); ++i) {
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    if (w[F::NativeMemoryBlockMask] != render::nativeMemoryBlockMask(expectedMode) ||
+        w[F::NativeMemoryAdmitted] || w[F::ArenaAttempts] != w[F::ArenaAllocations] + w[F::ArenaFailures] ||
+        w[F::ArenaLargestAllocation] > w[F::ArenaPeak] ||
+        w[F::ArenaReserved] > w[F::ArenaCapacity] ||
+        w[F::ArenaReserved] < w[F::ArenaUsed] || w[F::ArenaLargestFree] > w[F::ArenaCapacity]) {
+        return false;
+    }
+    constexpr auto reserved = F::Reserved60;
+#else
+    constexpr auto reserved = F::Reserved53;
+#endif
+    for (unsigned i = static_cast<unsigned>(reserved); i < w.words.size(); ++i) {
         if (w.words[i]) { return false; }
     }
     if (expectedProfile != 3) { return w == initialRenderWire(expectedProfile, 0); }

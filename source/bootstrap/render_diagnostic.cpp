@@ -54,6 +54,14 @@ void finish(RenderDisable reason) {
     wire[F::ArenaPeak] = stats.peak; wire[F::ArenaAllocations] = stats.allocations;
     wire[F::ArenaFrees] = stats.frees; wire[F::ArenaFailures] = stats.failures;
     wire[F::ArenaInvalidFrees] = stats.invalidFrees;
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    wire[F::ArenaAttempts] = stats.attempts;
+    wire[F::ArenaLargestAllocation] = stats.largestAllocation;
+    wire[F::ArenaLastFailedRequest] = stats.lastFailedRequest;
+    wire[F::ArenaLargestFree] = arena.largestFree();
+    wire[F::ArenaReserved] = stats.reserved;
+    wire[F::NativeMemoryAdmitted] = nativeMemoryAdmitted(YW1_RENDER_MODE);
+#endif
     publishRender(wire);
 }
 } // 無名名前空間

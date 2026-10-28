@@ -9,6 +9,7 @@ namespace yw1::render {
 struct ArenaStats {
     std::uint64_t capacity = 0, used = 0, peak = 0, allocations = 0, frees = 0;
     std::uint64_t failures = 0, invalidFrees = 0, live = 0, reserved = 0;
+    std::uint64_t attempts = 0, largestAllocation = 0, lastFailedRequest = 0;
 };
 class ImGuiArena {
   public:

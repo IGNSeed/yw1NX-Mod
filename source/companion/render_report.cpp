@@ -18,7 +18,11 @@ const char* modeName(std::uint64_t mode) {
 }
 } // 無名名前空間
 void appendRenderReport(Report& r, const Observation& o) {
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    r.append("\n=== YW1 Renderer Memory B0.2.13 ABI3 ===\nrender_read_result=0x%08X\n",
+#else
     r.append("\n=== YW1 Renderer Foundation B0.2.12 ABI2 ===\nrender_read_result=0x%08X\n",
+#endif
              o.renderReadResult);
     if (!available(o)) { r.append("render_state=unknown wrong_pair_abi_or_unstable\n"); return; }
     const auto& w = o.render;
@@ -55,6 +59,21 @@ void appendRenderReport(Report& r, const Observation& o) {
         static_cast<unsigned long long>(w[F::Api]), static_cast<unsigned>(w[F::ThreadResult]),
         static_cast<unsigned long long>(w[F::BindingResult]));
     r.append("loader_result_unattempted=0xFFFFFFFF state_scope=last_observation\n");
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    r.append("native_memory_admitted=%llu native_memory_unproven_mask=0x%02llX\n"
+             "memory_proof_domain=%s Host_fault_evidence=external_only\n"
+             "memory_obligations=1:construction 2:vector_growth 4:font 8:demo\n"
+             "arena_attempts=%llu arena_largest_allocation=%llu arena_last_failed_request=%llu\n"
+             "arena_largest_free=%llu arena_reserved=%llu\n",
+        static_cast<unsigned long long>(w[F::NativeMemoryAdmitted]),
+        static_cast<unsigned long long>(w[F::NativeMemoryBlockMask]),
+        w[F::Profile] == 3 ? "Native_unproven" : "not_requested",
+        static_cast<unsigned long long>(w[F::ArenaAttempts]),
+        static_cast<unsigned long long>(w[F::ArenaLargestAllocation]),
+        static_cast<unsigned long long>(w[F::ArenaLastFailedRequest]),
+        static_cast<unsigned long long>(w[F::ArenaLargestFree]),
+        static_cast<unsigned long long>(w[F::ArenaReserved]));
+#endif
     r.append("render_owner_context=0x%016llX render_owner_thread=0x%016llX\n",
         static_cast<unsigned long long>(w[F::OwnerContext]),
         static_cast<unsigned long long>(w[F::OwnerThread]));
@@ -67,7 +86,11 @@ void appendRenderReport(Report& r, const Observation& o) {
     }
 }
 void showRenderPage(const Observation& o, bool memoryPage) {
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+    std::printf("Renderer Memory B0.2.13 %s\nRead: %08X\n",
+#else
     std::printf("Renderer Foundation B0.2.12 %s\nRead: %08X\n",
+#endif
                 memoryPage ? "2/2" : "1/2", o.renderReadResult);
     if (!available(o)) { std::printf("Runtime state: unknown / wrong pair or ABI\n"); }
     else {
@@ -94,6 +117,19 @@ void showRenderPage(const Observation& o, bool memoryPage) {
                 static_cast<unsigned long long>(w[F::GlRejected]),
                 static_cast<unsigned long long>(w[F::GlResult]), functionName(w[F::GlFirstFailure]),
                 static_cast<unsigned long long>(w[F::MemoryContractProven]));
+#if YW1_RENDER_MEMORY_DIAGNOSTICS
+            std::printf("Largest allocation: %llu Attempts: %llu\n"
+                        "Largest free: %llu Reserved: %llu\n"
+                        "Native admission: %llu Unproven mask: %02llX\n"
+                        "Host fault evidence: external / Native: %s\n",
+                static_cast<unsigned long long>(w[F::ArenaLargestAllocation]),
+                static_cast<unsigned long long>(w[F::ArenaAttempts]),
+                static_cast<unsigned long long>(w[F::ArenaLargestFree]),
+                static_cast<unsigned long long>(w[F::ArenaReserved]),
+                static_cast<unsigned long long>(w[F::NativeMemoryAdmitted]),
+                static_cast<unsigned long long>(w[F::NativeMemoryBlockMask]),
+                w[F::Profile] == 3 ? "unproven" : "not requested");
+#endif
         } else {
             std::printf("Callbacks / Skips / Busy: %llu / %llu / %llu\n"
                         "Context checks / changes: %llu / %llu\n"
