@@ -2,6 +2,9 @@
 #include "logging/memory_log.hpp"
 #include <common.hpp>
 #include <lib/util/sys/mem_layout.hpp>
+#if YW1_BOOTSTRAP_EGL_CALLBACK
+#include "callback_diagnostic.hpp"
+#endif
 
 namespace yw1::bootstrap {
 namespace {
@@ -77,7 +80,15 @@ void runEglDiagnostic() {
     installer.blockedReason = error(HookError::UnverifiedThread);
 #endif
     publishEglDiagnostic(state);
-    constexpr char kMessage[] = "[YW1] egl_hook_enabled=0; installer_safety_unverified\n";
+#if YW1_BOOTSTRAP_EGL_CALLBACK
+    runCallbackDiagnostic(state.guardStatus);
+#endif
+    constexpr char kMessage[] =
+#if YW1_BOOTSTRAP_EGL_CALLBACK
+        "[YW1] legacy_export_hook_enabled=0; main_callsite_status_in_callback_publication\n";
+#else
+        "[YW1] egl_hook_enabled=0; installer_safety_unverified\n";
+#endif
     static_cast<void>(logging::memoryLog().append(kMessage, sizeof(kMessage) - 1));
     constexpr char kLabel[] = "[YW1] egl_hook_guard_status=";
     static_cast<void>(

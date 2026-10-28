@@ -9,6 +9,9 @@ set(diagnostic_symbols yw1_module_identity yw1_module_diagnostics_state
 if(EGL_DIAGNOSTIC)
     list(APPEND diagnostic_symbols yw1_egl_diagnostics)
 endif()
+if(CALLBACK_DIAGNOSTIC)
+    list(APPEND diagnostic_symbols yw1_callback_diagnostics)
+endif()
 foreach(name IN LISTS diagnostic_symbols)
     string(REGEX MATCH "([0-9a-fA-F]+) ([0-9a-fA-F]+) [A-Za-z] ${name}(\n|$)" row "${symbols}")
     if(NOT row)
@@ -31,12 +34,15 @@ endforeach()
 get_filename_component(directory "${OUTPUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${directory}")
 file(WRITE "${OUTPUT}" "#pragma once\n#include <cstdint>\nnamespace yw1::companion {\n"
-    "inline constexpr std::uint8_t kExpectedModuleId[32]{${bytes}};\n"
-    "inline constexpr std::uint64_t kIdentityOffset=${yw1_module_identity_offset};\n"
-    "inline constexpr std::uint64_t kStateOffset=${yw1_module_diagnostics_state_offset};\n"
-    "inline constexpr std::uint64_t kStateSize=${yw1_module_diagnostics_state_size};\n"
-    "inline constexpr std::uint64_t kExportHeaderOffset=${yw1_module_log_header_offset};\n"
-    "inline constexpr std::uint64_t kExportDataOffset=${yw1_module_log_words_offset};\n}\n")
+    "inline constexpr std::uint8_t k${PREFIX}ExpectedModuleId[32]{${bytes}};\n"
+    "inline constexpr std::uint64_t k${PREFIX}IdentityOffset=${yw1_module_identity_offset};\n"
+    "inline constexpr std::uint64_t k${PREFIX}StateOffset=${yw1_module_diagnostics_state_offset};\n"
+    "inline constexpr std::uint64_t k${PREFIX}StateSize=${yw1_module_diagnostics_state_size};\n"
+    "inline constexpr std::uint64_t k${PREFIX}ExportHeaderOffset=${yw1_module_log_header_offset};\n"
+    "inline constexpr std::uint64_t k${PREFIX}ExportDataOffset=${yw1_module_log_words_offset};\n}\n")
 if(EGL_DIAGNOSTIC)
-    file(APPEND "${OUTPUT}" "namespace yw1::companion { inline constexpr std::uint64_t kEglOffset=${yw1_egl_diagnostics_offset}; }\n")
+    file(APPEND "${OUTPUT}" "namespace yw1::companion { inline constexpr std::uint64_t k${PREFIX}EglOffset=${yw1_egl_diagnostics_offset}; }\n")
+endif()
+if(CALLBACK_DIAGNOSTIC)
+    file(APPEND "${OUTPUT}" "namespace yw1::companion { inline constexpr std::uint64_t kCallbackOffset=${yw1_callback_diagnostics_offset}; }\n")
 endif()

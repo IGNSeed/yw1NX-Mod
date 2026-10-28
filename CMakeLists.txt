@@ -27,6 +27,17 @@ option(YW1_COMPANION_EGL_TARGET_MEMORY "Query only the captured GOT target in th
 option(YW1_COMPANION_EGL_CODE_SNAPSHOT "Read at most 16 bytes from a validated RX GOT target" OFF)
 option(YW1_COMPANION_EGL_CODE_ATTRIBUTION "Read a fixed 64-byte GOT target snapshot for host analysis" OFF)
 option(YW1_COMPANION_SALTY_ORIGINAL_EGL "Inspect the fixed SaltyNX reference original EGL slot" OFF)
+set(YW1_EGL_CALLBACK_PROFILE "OFF" CACHE STRING "OFF, READ_ONLY or CANARY")
+set_property(CACHE YW1_EGL_CALLBACK_PROFILE PROPERTY STRINGS OFF READ_ONLY CANARY)
+if(NOT YW1_EGL_CALLBACK_PROFILE MATCHES "^(OFF|READ_ONLY|CANARY)$")
+    message(FATAL_ERROR "Unknown EGL callback profile")
+endif()
+if(NOT YW1_EGL_CALLBACK_PROFILE STREQUAL "OFF" AND
+   (NOT YW1_BUILD_BOOTSTRAP OR NOT YW1_BUILD_DIAGNOSTICS_COMPANION OR
+    NOT YW1_COMPANION_SALTY_ORIGINAL_EGL OR NOT YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC OR
+    YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_FS_DIAGNOSTIC))
+    message(FATAL_ERROR "Callback profiles require the new bootstrap and complete B027 companion")
+endif()
 if(YW1_COMPANION_SALTY_ORIGINAL_EGL AND NOT YW1_COMPANION_EGL_CODE_ATTRIBUTION)
     message(FATAL_ERROR "Original EGL diagnostics require the 64-byte attribution profile")
 endif()
@@ -39,9 +50,10 @@ endif()
 if(YW1_COMPANION_EGL_TARGET_MEMORY AND NOT YW1_COMPANION_EGL_GOT_PROBE)
     message(FATAL_ERROR "Target memory diagnostics require the read-only GOT companion")
 endif()
-option(YW1_EGL_HOOK_ENABLED "Enable the EGL hook after installer safety verification" OFF)
+option(YW1_EGL_HOOK_ENABLED "Enable the legacy EGL export trampoline after verification" OFF)
 if(YW1_COMPANION_EGL_GOT_PROBE AND
-    (YW1_BUILD_BOOTSTRAP OR NOT YW1_BUILD_DIAGNOSTICS_COMPANION OR
+    ((YW1_BUILD_BOOTSTRAP AND YW1_EGL_CALLBACK_PROFILE STREQUAL "OFF") OR
+     NOT YW1_BUILD_DIAGNOSTICS_COMPANION OR
      NOT YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS OR NOT YW1_BOOTSTRAP_EGL_DIAGNOSTIC OR
      NOT YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC))
     message(FATAL_ERROR "GOT probe requires companion-only mode and the B021 external/EGL/safe ABI")

@@ -12,6 +12,9 @@
 #if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC
 #include "bootstrap/exlaunch_preflight.hpp"
 #include "diagnostics/log_export.hpp"
+#if YW1_BOOTSTRAP_EGL_CALLBACK
+#include "diagnostics/callback_wire.hpp"
+#endif
 extern "C" char __module_start;
 #endif
 #if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
@@ -64,6 +67,10 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     }
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
     yw1::logging::recordProgress(yw1::logging::Stage::InitEnter, 0);
+#if YW1_BOOTSTRAP_EGL_CALLBACK
+    yw1::diagnostics::initializeCallbackWire(
+        static_cast<yw1::diagnostics::CallbackProfile>(YW1_CALLBACK_PROFILE));
+#endif
 #endif
 #if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC
     using namespace yw1::logging;

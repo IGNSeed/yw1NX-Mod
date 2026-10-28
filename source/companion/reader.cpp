@@ -1,6 +1,9 @@
 #include "report.hpp"
 
 #include "diagnostic_target.hpp"
+#if YW1_COMPANION_EGL_CALLBACK
+#include "legacy_diagnostic_target.hpp"
+#endif
 
 #include <switch.h>
 
@@ -32,10 +35,27 @@ void inspectCheatService(Report& report) {
 
 class BoundReader {
   public:
-    BoundReader(Handle process, const ModuleRecord& module, Report& report)
-        : process_(process), module_(module), report_(report) {}
+    BoundReader(Handle process, const ModuleRecord& module, Report& report,
+                [[maybe_unused]] bool legacy = false)
+        : process_(process), module_(module), report_(report)
+#if YW1_COMPANION_EGL_CALLBACK
+          , legacy_(legacy)
+#endif
+          {}
 
     Result read(std::uint64_t offset, void* output, std::size_t size) {
+#if YW1_COMPANION_EGL_CALLBACK
+        if (legacy_) {
+            if (offset == kIdentityOffset) { offset = kLegacyIdentityOffset; }
+            else if (offset == kStateOffset) { offset = kLegacyStateOffset; }
+            else if (offset == kExportHeaderOffset) { offset = kLegacyExportHeaderOffset; }
+            else if (offset == kEglOffset) { offset = kLegacyEglOffset; }
+            else if (offset >= kExportDataOffset &&
+                     offset - kExportDataOffset < diagnostics::kExportCapacity) {
+                offset = kLegacyExportDataOffset + offset - kExportDataOffset;
+            } else { return kInvalidData; }
+        }
+#endif
         return readFrom(module_, offset, output, size);
     }
 #if YW1_COMPANION_EGL_GOT_PROBE
@@ -188,6 +208,9 @@ class BoundReader {
     ModuleRecord module_;
     Report& report_;
     bool quarantined_ = false;
+#if YW1_COMPANION_EGL_CALLBACK
+    bool legacy_ = false;
+#endif
 };
 
 #if YW1_COMPANION_EGL_GOT_PROBE
@@ -657,7 +680,23 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
         return;
     }
     report.append("main_build_id_verified=true\n");
-    const auto index = findModule(modules, count, kExpectedModuleId);
+    auto index = findModule(modules, count, kExpectedModuleId);
+#if YW1_COMPANION_EGL_CALLBACK
+    const auto legacyIndex = findModule(modules, count, kLegacyExpectedModuleId);
+    if (index < -1 || legacyIndex < -1) {
+        observation.result = kInvalidData;
+        return;
+    }
+    if (index >= 0 && legacyIndex >= 0) {
+        observation.result = kInvalidData;
+        report.append("diagnostic_module_selection=ambiguous_current_and_legacy\n");
+        return;
+    }
+    if (index == -1 && legacyIndex >= 0) {
+        index = legacyIndex;
+        observation.legacyModule = true;
+    }
+#endif
     if (index < 0) {
         const bool absent = index == -1 && static_cast<std::size_t>(count) < capacity;
         observation.moduleDetected = absent ? 0 : -1;
@@ -687,7 +726,11 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
         observation.result = rc != 0 ? rc : kWrongTarget;
         return;
     }
-    BoundReader reader(process, modules[index], report);
+    BoundReader reader(process, modules[index], report
+#if YW1_COMPANION_EGL_CALLBACK
+                       , observation.legacyModule
+#endif
+    );
     diagnostics::ModuleIdentity identity{};
     rc = report.result("module_identity_read_result",
                        reader.read(kIdentityOffset, &identity, sizeof(identity)));
@@ -760,6 +803,7 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                       hook.active, hook.blockedReason, hook.cleanup, hook.resourcesRetained,
                       hook.leaseRelease);
 #if YW1_COMPANION_EGL_GOT_PROBE
+#if !YW1_COMPANION_EGL_CALLBACK
         report.append("hook_preflight_result_semantics=guard_derived_not_installer_execution\n"
                       "static_guard_executed=%s static_guard_status=0x%08X\n"
                       "guard_derived_preflight_result=0x%08X\n"
@@ -767,9 +811,18 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                       "installer_linked_in_module=false\n",
                       egl.guardStatus == UINT32_MAX ? "unknown_unrecorded" : "true",
                       egl.guardStatus, hook.preflight);
+#else
+        report.append("export_guard_semantics=legacy_export_candidate_guard_only\n"
+                      "main_callsite_installer_status=see_callback_canary_section\n");
 #endif
 #endif
-        report.append("egl_hook_install_attempted=%u egl_hook_install_result=0x%08X\n"
+#endif
+        report.append(
+#if YW1_COMPANION_EGL_CALLBACK
+                      "egl_export_hook_install_attempted=%u egl_export_hook_install_result=0x%08X\n"
+#else
+                      "egl_hook_install_attempted=%u egl_hook_install_result=0x%08X\n"
+#endif
                       "egl_hook_guard_status=%u egl_hook_blocked_reason=%u\n"
                       "egl_hook_callback_count=%llu egl_hook_original_call_count=%llu "
                       "egl_hook_original_return_count=%llu\n"
@@ -873,6 +926,25 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                           static_cast<unsigned long long>(bootstrap->header.generation));
         }
     }
+#if YW1_COMPANION_EGL_CALLBACK
+    if (!observation.legacyModule && !reader.quarantined()) {
+        observation.callbackReadResult = kExportChanged;
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            std::array<std::uint64_t, 1 + diagnostics::kCallbackWords> first{}, second{};
+            auto result = reader.read(kCallbackOffset, first.data(), sizeof(first));
+            if (result == 0) {
+                result = reader.read(kCallbackOffset, second.data(), sizeof(second));
+            }
+            if (result != 0) { observation.callbackReadResult = result; break; }
+            if (first[0] == 0 || (first[0] & 1) != 0 || first != second) { continue; }
+            diagnostics::CallbackWire wire;
+            std::memcpy(wire.words.data(), first.data() + 1, sizeof(wire));
+            observation.callbackReadResult = diagnostics::validCallbackWire(wire) ? 0 : kInvalidData;
+            if (observation.callbackReadResult == 0) { observation.callback = wire; }
+            break;
+        }
+    }
+#endif
 #if YW1_COMPANION_EGL_GOT_PROBE
     inspectGot(reader, process, {modules, static_cast<std::size_t>(count)},
                static_cast<std::size_t>(count) < capacity, observation.pid, title, observation.got);

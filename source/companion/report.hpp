@@ -8,13 +8,18 @@
 
 #include <cstdarg>
 #include <cstdio>
+#if YW1_COMPANION_EGL_CALLBACK
+#include "callback_report.hpp"
+#endif
 #if YW1_COMPANION_EGL_GOT_PROBE
 #include "got_probe.hpp"
 #endif
 
 namespace yw1::companion {
 
-#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+#if YW1_COMPANION_EGL_CALLBACK
+constexpr char kCompanionVersion[] = "B0.2.8";
+#elif YW1_COMPANION_SALTY_ORIGINAL_EGL
 constexpr char kCompanionVersion[] = "B0.2.7";
 #elif YW1_COMPANION_EGL_CODE_ATTRIBUTION
 constexpr char kCompanionVersion[] = "B0.2.5";
@@ -125,6 +130,11 @@ struct Observation {
     std::uint32_t result = kNotAttempted;
     bool snapshotRead = false;
     bool cleanupFailed = false;
+#if YW1_COMPANION_EGL_CALLBACK
+    bool legacyModule = false;
+    diagnostics::CallbackWire callback{};
+    std::uint32_t callbackReadResult = kNotAttempted;
+#endif
 #if YW1_COMPANION_EGL_GOT_PROBE
     GotObservation got{};
 #endif

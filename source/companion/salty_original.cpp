@@ -220,7 +220,11 @@ void appendOriginalReport(Report& report, const Observation& observation) {
                   "original_matches_subsdk0_export=%s original_snapshot_valid=%s\n"
                   "reader_quarantined=%s original_reads_matched=%s\n"
                   "original_consistency=two_equal_reads_and_pre_post_checks_not_atomic\n"
+#if YW1_COMPANION_EGL_CALLBACK
+                  "egl_export_hook_install_attempted=0 got_modification=disabled\n",
+#else
                   "egl_hook_install_attempted=0 got_modification=disabled\n",
+#endif
                   originalPointerKindName(original.kind), targetBoolean(original.executable),
                   targetBoolean(original.expectedExport), targetBoolean(original.snapshotValid),
                   targetBoolean(original.readerQuarantined), targetBoolean(original.readsMatched));

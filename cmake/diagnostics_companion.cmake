@@ -47,6 +47,18 @@ if(YW1_COMPANION_SALTY_ORIGINAL_EGL)
     target_compile_definitions(yw1_diagnostics PRIVATE YW1_COMPANION_SALTY_ORIGINAL_EGL=1)
     set(yw1_diagnostic_version "B0.2.7")
 endif()
+if(NOT YW1_EGL_CALLBACK_PROFILE STREQUAL "OFF")
+    include(cmake/callback_profiles.cmake)
+    target_sources(yw1_diagnostics PRIVATE source/companion/callback_report.cpp
+        source/diagnostics/callback_wire.cpp)
+    target_compile_definitions(yw1_diagnostics PRIVATE
+        YW1_COMPANION_EGL_CALLBACK=1 YW1_CALLBACK_PROFILE=${yw1_callback_profile})
+    if(yw1_callback_profile EQUAL 2)
+        set(yw1_diagnostic_version "B0.2.8-B")
+    else()
+        set(yw1_diagnostic_version "B0.2.8-A")
+    endif()
+endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)

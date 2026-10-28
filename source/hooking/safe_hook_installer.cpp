@@ -32,6 +32,14 @@ bool encodeBranch(std::uintptr_t from, std::uintptr_t to, std::uint32_t& instruc
 }
 } // 無名名前空間
 
+Result encodeCallBranch(std::uintptr_t from, std::uintptr_t to, std::uint32_t& output) {
+    if (!encodeBranch(from, to, output)) {
+        return error(HookError::InvalidBranch);
+    }
+    output |= 0x80000000u;
+    return 0;
+}
+
 Result preflight(const HookTarget& target, std::span<const std::uint32_t> code,
                  InstallerReport& report) {
     report.identity = diagnostics::resolveSwap(target.module) ? 0 : error(HookError::Identity);

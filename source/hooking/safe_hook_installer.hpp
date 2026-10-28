@@ -70,6 +70,8 @@ struct BranchPlan {
 };
 Result prepareBranch(const HookTarget& target, std::uintptr_t trampolineRx, std::size_t capacity,
                      BranchPlan& output);
+// 同じ距離・整列検査を、固定callsiteの単一BLにも使用する。
+Result encodeCallBranch(std::uintptr_t from, std::uintptr_t to, std::uint32_t& output);
 Result preflight(const HookTarget& target, std::span<const std::uint32_t> code,
                  InstallerReport& report);
 

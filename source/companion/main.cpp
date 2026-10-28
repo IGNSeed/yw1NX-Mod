@@ -180,6 +180,9 @@ int main() {
 #if YW1_COMPANION_EGL_GOT_PROBE
     appendGotReport(report, observation, bootstrapLog);
 #endif
+#if YW1_COMPANION_EGL_CALLBACK
+    appendCallbackReport(report, observation);
+#endif
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
         const auto& state = observation.snapshot;
@@ -321,7 +324,7 @@ int main() {
                 std::printf("Game Page Permission: %X (game handle)\n", got.pagePermission);
             }
             std::printf("Binding State: %s\nBootstrap Value: not collected (module unchanged)\n"
-                        "Hook Active: no GOT Modification: disabled\n"
+                        "Export/GOT Hook Active: no GOT Modification: disabled\n"
                         "Compare full Build ID + offset between boots.\n"
                         "Album snapshot does not prove stability during play.\n"
                         "A: summary L: EGL/OpenGL B: back\n",
@@ -383,7 +386,7 @@ int main() {
                         "Code snapshot disabled pending mapping/lifetime evidence.\n");
 #endif
             std::printf("Executable page does not verify a function or owner.\n"
-                        "Hook Active: no GOT Modification: disabled\n"
+                        "Export/GOT Hook Active: no GOT Modification: disabled\n"
                         "Album snapshot does not prove stability during play.\n"
                         "A: summary L: GOT Probe B: back\n");
         };
@@ -395,6 +398,60 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
+#if YW1_COMPANION_EGL_CALLBACK
+            if (codeSnapshotPart == 3) {
+                using Field = yw1::diagnostics::CallbackField;
+                const auto& wire = observation.callback;
+                std::printf("EGL Callback B0.2.8\nSource: game module\n"
+                            "Build Profile: %s  GL/ImGui: disabled\n"
+                            "Read: %08X Legacy ABI: %s\n",
+                            YW1_CALLBACK_PROFILE == 2 ? "B / Canary" : "A / Read-only",
+                            observation.callbackReadResult, observation.legacyModule ? "yes" : "no");
+                if (observation.callbackReadResult != 0) {
+                    std::printf("Callback state / counts: unknown\n%s\n"
+                                "A: summary L: Original EGL B: back\n",
+                                observation.legacyModule ? "Legacy module: no callback publication."
+                                    : "Unpublished, unstable or failed read; see Result.");
+                    return;
+                }
+                const auto number = [&](const char* name, Field field) {
+                    std::printf("%s: %llu\n", name,
+                                static_cast<unsigned long long>(wire[field]));
+                };
+                number("Module Profile (1=A, 2=B)", Field::Profile);
+                std::printf("Method: Main single BL-to-BL\nTarget: %016llX Original PLT: %016llX\n"
+                            "Guard: %08X Install: %08X\n",
+                            static_cast<unsigned long long>(wire[Field::Target]),
+                            static_cast<unsigned long long>(wire[Field::Original]),
+                            static_cast<unsigned>(wire[Field::GuardResult]),
+                            static_cast<unsigned>(wire[Field::InstallResult]));
+                number("Install Attempted", Field::InstallAttempted);
+                number("Original Published", Field::OriginalPublished);
+                number("Hook Active (2=uncertain)", Field::HookActive);
+                number("Callback Count", Field::CallbackCount);
+                number("Original Call Count", Field::OriginalCalls);
+                number("Original Return Count", Field::OriginalReturns);
+                if (wire[Field::OriginalReturns]) {
+                    std::printf("Last Original Result: %08X\n",
+                                static_cast<unsigned>(wire[Field::LastOriginalResult]));
+                } else { std::printf("Last Original Result: unknown\n"); }
+                number("Reentry / Overlap Count", Field::ReentryCount);
+                std::printf("Thread ID: unknown\nHook Error: %08X\nRollback: %llu / %08X\n"
+                            "Mapping: %08X Cache: %08X Cleanup: %08X\n",
+                            static_cast<unsigned>(wire[Field::HookError]),
+                            static_cast<unsigned long long>(wire[Field::RollbackAttempted]),
+                            static_cast<unsigned>(wire[Field::RollbackResult]),
+                            static_cast<unsigned>(wire[Field::MappingResult]),
+                            static_cast<unsigned>(wire[Field::CacheResult]),
+                            static_cast<unsigned>(wire[Field::CleanupResult]));
+                number("Initialization Stage", Field::InitializationStage);
+                std::printf("Status: %s\nReason: %s\nGame activity during NRO: unknown\n"
+                            "GOT Modification: disabled\nA: summary L: Original EGL B: back\n",
+                            yw1::diagnostics::callbackActivity(wire),
+                            yw1::diagnostics::callbackReason(wire));
+                return;
+            }
+#endif
 #if YW1_COMPANION_SALTY_ORIGINAL_EGL
             if (codeSnapshotPart == 2) {
                 const auto& original = got.original;
@@ -440,11 +497,14 @@ int main() {
                 std::printf("Original Executable: %s\nClassification: %s\n"
                             "Matches subsdk0 export: %s\nSnapshot Valid: %s Quarantined: %s\n"
                             "Identity: 64-byte window/layout only\n"
-                            "Hook Active: no GOT Modification: disabled\n"
+                            "Export/GOT Hook Active: no GOT Modification: disabled\n"
                             "A: summary L: HEX page B: back\n",
                             targetBoolean(original.executable), originalPointerKindName(original.kind),
                             targetBoolean(original.expectedExport), targetBoolean(original.snapshotValid),
                             targetBoolean(original.readerQuarantined));
+#if YW1_COMPANION_EGL_CALLBACK
+                std::printf("R: EGL Callback\n");
+#endif
                 return;
             }
 #endif
@@ -466,7 +526,7 @@ int main() {
                     std::printf("Bytes: unknown (snapshot rejected)\n");
                 }
                 std::printf("No target execution or branch following.\n"
-                            "Hook Active: no GOT Modification: disabled\n"
+                            "Export/GOT Hook Active: no GOT Modification: disabled\n"
                             "A: summary L: Snapshot status B: back\n");
 #if YW1_COMPANION_SALTY_ORIGINAL_EGL
                 std::printf("R: SaltyNX Original EGL\n");
@@ -534,7 +594,7 @@ int main() {
             std::printf("R: HEX page (accepted bytes only)\n");
 #endif
             std::printf("Consistency: %s\nNo target execution or branch following.\n"
-                        "Hook Active: no GOT Modification: disabled\n"
+                        "Export/GOT Hook Active: no GOT Modification: disabled\n"
                         "Snapshot does not verify owner or hook safety.\n"
                         "A: summary L: Target Memory B: back\n",
                         snapshotConsistency(snapshot));
@@ -690,7 +750,11 @@ int main() {
 #if YW1_COMPANION_EGL_CODE_ATTRIBUTION
                     if ((down & HidNpadButton_R) && codeSnapshotPart <
 #if YW1_COMPANION_SALTY_ORIGINAL_EGL
+#if YW1_COMPANION_EGL_CALLBACK
+                        3
+#else
                         2
+#endif
 #else
                         1
 #endif
