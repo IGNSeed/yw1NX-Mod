@@ -1,4 +1,7 @@
 #include "context_diagnostic.hpp"
+#if YW1_RENDER_EXPERIMENT
+#include "render_diagnostic.hpp"
+#endif
 #include "diagnostics/context_bindings.hpp"
 #if YW1_EGL_GETTER_WHITELIST
 #include "diagnostics/gl_getter_whitelist.hpp"
@@ -161,6 +164,11 @@ class NativeContextPlatform final : public ContextPlatform {
     }
     void publish(const ContextWire& wire) override { publishContext(wire); }
     ContextApi api{};
+#if YW1_RENDER_EXPERIMENT
+    void prepareRenderer() {
+        prepareRenderDiagnostic(*this, api, sub_, text_[0][0], text_[0][1]);
+    }
+#endif
   private:
     bool code(unsigned index, std::uintptr_t address) {
         const auto& binding = kContextBindings[index];
@@ -186,6 +194,9 @@ constinit ContextProbe probe;
 } // 無名名前空間
 void prepareContextDiagnostic() {
     platform.configure();
+#if YW1_RENDER_EXPERIMENT
+    platform.prepareRenderer();
+#endif
     probe.initialize(2, platform.api, platform);
 }
 void probeContextCallback() {
@@ -196,6 +207,10 @@ void probeContextCallback() {
     };
     probe.onCallback(word(F::CallbackCount), word(F::HookActive) == 1 &&
         word(F::OriginalPublished) == 1 && word(F::InstallResult) == 0 && word(F::GuardResult) == 0);
+#if YW1_RENDER_EXPERIMENT
+    if (word(F::HookActive) == 1 && word(F::OriginalPublished) == 1 &&
+        word(F::InstallResult) == 0 && word(F::GuardResult) == 0) { probeRenderCallback(); }
+#endif
 }
 #else
 void prepareContextDiagnostic() {}

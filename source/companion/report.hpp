@@ -2,6 +2,9 @@
 
 #include "diagnostics/log_export_wire.hpp"
 #include "diagnostics/module_wire.hpp"
+#if YW1_RENDER_DIAGNOSTICS
+#include "diagnostics/render_wire.hpp"
+#endif
 #if YW1_IMGUI_DEMO_DIAGNOSTICS
 #include "diagnostics/demo_wire.hpp"
 #endif
@@ -23,7 +26,9 @@
 
 namespace yw1::companion {
 
-#if YW1_IMGUI_DEMO_DIAGNOSTICS
+#if YW1_RENDER_DIAGNOSTICS
+constexpr char kCompanionVersion[] = "B0.2.12";
+#elif YW1_IMGUI_DEMO_DIAGNOSTICS
 constexpr char kCompanionVersion[] = "B0.2.11";
 #elif YW1_EGL_GETTER_WHITELIST
 constexpr char kCompanionVersion[] = "B0.2.10";
@@ -61,7 +66,11 @@ inline std::size_t loaderCapacity(std::size_t pointerBytes) {
     const auto count = pointerBytes / 48;
     return count < kLoaderQueryCapacity ? count : kLoaderQueryCapacity;
 }
+#if YW1_RENDER_DIAGNOSTICS
+constexpr std::size_t kReportCapacity = 40 * 1024;
+#else
 constexpr std::size_t kReportCapacity = 24 * 1024;
+#endif
 constexpr std::uint64_t kFileCapacity = 1024 * 1024;
 constexpr char kLogPath[] = "/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD/logs.txt";
 
@@ -135,6 +144,10 @@ inline bool validRead(const ModuleRecord& module, std::uint64_t offset, std::siz
 }
 
 struct Observation {
+#if YW1_RENDER_DIAGNOSTICS
+    diagnostics::RenderWire render{};
+    std::uint32_t renderReadResult = kNotAttempted;
+#endif
 #if YW1_IMGUI_DEMO_DIAGNOSTICS
     diagnostics::DemoWire demo{};
     std::uint32_t demoReadResult = kNotAttempted;

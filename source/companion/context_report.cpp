@@ -223,7 +223,9 @@ void showContextPage(const Observation& o, bool glPage) {
     }
     std::printf("EGL/GL GetError: never called. Draw/ImGui: disabled\n"
                 "A: summary L: previous %s B: back\n", glPage ?
-#if YW1_IMGUI_DEMO_DIAGNOSTICS
+#if YW1_RENDER_DIAGNOSTICS
+                "R: Renderer"
+#elif YW1_IMGUI_DEMO_DIAGNOSTICS
                 "R: Demo status"
 #else
                 ""

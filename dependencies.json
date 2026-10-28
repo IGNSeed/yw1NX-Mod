@@ -46,7 +46,8 @@
             "sourceManifestSha256": "15916057a66b9b3deeb38aba53124062166e04f029643484ee52c18471477665",
             "linkedRuntime": false,
             "buildSystem": "core C++ sources with platform and renderer backends",
-            "notes": "B.0.2.11の独立AArch64参照archiveを任意ビルド。allocator・失敗時状態復元・描画dispatch・Context別寿命が未検証のため全Moduleは描画OFF。imgui-xenoの固定版を保持し、混在・置換しない。"
+            "localAdapter": "cmake/imgui_safe_patch.cmake",
+            "notes": "B.0.2.12は専用arena・型付きresolver・状態保全adapter・Context監視・最小/Demo pipelineを独立AArch64 archiveとしてビルド。固定原本は保持して限定Patchをbuild領域へ生成。任意OOM契約が未成立のためゲームModuleは基盤診断だけを実行し描画を許可しない。imgui-xenoの固定版を保持し混在・置換しない。"
         }
     ]
 }

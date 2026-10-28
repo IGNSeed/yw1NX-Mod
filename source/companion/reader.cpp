@@ -1041,6 +1041,25 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
         observation.cleanupFailed = reader.quarantined();
     }
 #endif
+#if YW1_RENDER_DIAGNOSTICS
+    if (!observation.legacyModule && !observation.b028Profile && !reader.quarantined()) {
+        observation.renderReadResult = kExportChanged;
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            std::array<std::uint64_t, 65> first{}, second{};
+            auto rc = reader.read(kRenderOffset, first.data(), sizeof(first));
+            if (rc == 0) { rc = reader.read(kRenderOffset, second.data(), sizeof(second)); }
+            if (rc != 0) { observation.renderReadResult = rc; break; }
+            if (!first[0] || (first[0] & 1) || first != second) { continue; }
+            diagnostics::RenderWire wire;
+            std::memcpy(wire.words.data(), first.data() + 1, sizeof(wire));
+            observation.renderReadResult = diagnostics::validRenderWire(
+                wire, YW1_RENDER_PROFILE, YW1_RENDER_MODE) ? 0 : kInvalidData;
+            if (observation.renderReadResult == 0) { observation.render = wire; }
+            break;
+        }
+        observation.cleanupFailed = reader.quarantined();
+    }
+#endif
 }
 
 } // 無名名前空間
