@@ -3,6 +3,10 @@
 #include "diagnostic_target.hpp"
 #if YW1_COMPANION_EGL_CALLBACK
 #include "legacy_diagnostic_target.hpp"
+#if YW1_EGL_CONTEXT_PROBE
+#include "B028A_diagnostic_target.hpp"
+#include "B028B_diagnostic_target.hpp"
+#endif
 #endif
 
 #include <switch.h>
@@ -11,6 +15,17 @@
 
 namespace yw1::companion {
 namespace {
+#if YW1_EGL_CONTEXT_PROBE
+struct CallbackLayout {
+    const std::uint8_t* id;
+    std::uint64_t identity, state, header, data, egl, callback;
+};
+constexpr CallbackLayout kB028Layouts[]{
+    {kB028AExpectedModuleId, kB028AIdentityOffset, kB028AStateOffset, kB028AExportHeaderOffset,
+     kB028AExportDataOffset, kB028AEglOffset, kB028ACallbackOffset},
+    {kB028BExpectedModuleId, kB028BIdentityOffset, kB028BStateOffset, kB028BExportHeaderOffset,
+     kB028BExportDataOffset, kB028BEglOffset, kB028BCallbackOffset}};
+#endif
 
 struct ProcessReply {
     NcmProgramLocation location;
@@ -36,14 +51,36 @@ void inspectCheatService(Report& report) {
 class BoundReader {
   public:
     BoundReader(Handle process, const ModuleRecord& module, Report& report,
-                [[maybe_unused]] bool legacy = false)
+                [[maybe_unused]] bool legacy = false
+#if YW1_EGL_CONTEXT_PROBE
+                , unsigned b028 = 0
+#endif
+                )
         : process_(process), module_(module), report_(report)
 #if YW1_COMPANION_EGL_CALLBACK
           , legacy_(legacy)
 #endif
+#if YW1_EGL_CONTEXT_PROBE
+          , b028_(b028)
+#endif
           {}
 
     Result read(std::uint64_t offset, void* output, std::size_t size) {
+#if YW1_EGL_CONTEXT_PROBE
+        if (b028_) {
+            if (b028_ > 2) { return kInvalidData; }
+            const auto& layout = kB028Layouts[b028_ - 1];
+            if (offset == kIdentityOffset) { offset = layout.identity; }
+            else if (offset == kStateOffset) { offset = layout.state; }
+            else if (offset == kExportHeaderOffset) { offset = layout.header; }
+            else if (offset == kEglOffset) { offset = layout.egl; }
+            else if (offset == kCallbackOffset) { offset = layout.callback; }
+            else if (offset >= kExportDataOffset &&
+                     offset - kExportDataOffset < diagnostics::kExportCapacity) {
+                offset = layout.data + offset - kExportDataOffset;
+            } else { return kInvalidData; }
+        }
+#endif
 #if YW1_COMPANION_EGL_CALLBACK
         if (legacy_) {
             if (offset == kIdentityOffset) { offset = kLegacyIdentityOffset; }
@@ -210,6 +247,9 @@ class BoundReader {
     bool quarantined_ = false;
 #if YW1_COMPANION_EGL_CALLBACK
     bool legacy_ = false;
+#endif
+#if YW1_EGL_CONTEXT_PROBE
+    unsigned b028_ = 0;
 #endif
 };
 
@@ -683,6 +723,20 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
     auto index = findModule(modules, count, kExpectedModuleId);
 #if YW1_COMPANION_EGL_CALLBACK
     const auto legacyIndex = findModule(modules, count, kLegacyExpectedModuleId);
+#if YW1_EGL_CONTEXT_PROBE
+    int oldIndex = -1;
+    for (unsigned i = 0; i < 2; ++i) {
+        const auto found = findModule(modules, count, kB028Layouts[i].id);
+        if (found < -1 ||
+            (found >= 0 && (oldIndex >= 0 || index != -1 || legacyIndex != -1))) {
+            observation.result = kInvalidData;
+            report.append("diagnostic_module_selection=ambiguous_B028_or_current\n");
+            return;
+        }
+        if (found >= 0) { oldIndex = found; observation.b028Profile = i + 1; }
+    }
+    if (oldIndex >= 0) { index = oldIndex; }
+#endif
     if (index < -1 || legacyIndex < -1) {
         observation.result = kInvalidData;
         return;
@@ -729,6 +783,9 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
     BoundReader reader(process, modules[index], report
 #if YW1_COMPANION_EGL_CALLBACK
                        , observation.legacyModule
+#endif
+#if YW1_EGL_CONTEXT_PROBE
+                       , observation.b028Profile
 #endif
     );
     diagnostics::ModuleIdentity identity{};
@@ -943,6 +1000,25 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
             if (observation.callbackReadResult == 0) { observation.callback = wire; }
             break;
         }
+    }
+#endif
+#if YW1_EGL_CONTEXT_PROBE
+    if (!observation.legacyModule && !observation.b028Profile && !reader.quarantined()) {
+        observation.contextReadResult = kExportChanged;
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            std::array<std::uint64_t, 1 + diagnostics::kContextWords> first{}, second{};
+            auto result = reader.read(kContextOffset, first.data(), sizeof(first));
+            if (result == 0) { result = reader.read(kContextOffset, second.data(), sizeof(second)); }
+            if (result != 0) { observation.contextReadResult = result; break; }
+            if (first[0] == 0 || (first[0] & 1) || first != second) { continue; }
+            diagnostics::ContextWire wire;
+            std::memcpy(&wire, first.data() + 1, sizeof(wire));
+            observation.contextReadResult = diagnostics::validContextWire(wire) &&
+                wire[diagnostics::ContextField::Profile] == YW1_CALLBACK_PROFILE ? 0 : kInvalidData;
+            if (observation.contextReadResult == 0) { observation.context = wire; }
+            break;
+        }
+        observation.cleanupFailed = reader.quarantined();
     }
 #endif
 #if YW1_COMPANION_EGL_GOT_PROBE

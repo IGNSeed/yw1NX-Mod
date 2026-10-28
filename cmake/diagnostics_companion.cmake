@@ -62,6 +62,18 @@ endif()
 target_compile_options(yw1_diagnostics PRIVATE -O2 -g -march=armv8-a+crc+crypto -mtune=cortex-a57
     -mtp=soft -fPIE -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wall -Wextra
     -Wno-missing-field-initializers)
+if(YW1_EGL_CONTEXT_PROBE)
+    include(cmake/context_profiles.cmake)
+    target_sources(yw1_diagnostics PRIVATE source/companion/context_report.cpp
+        source/diagnostics/context_wire.cpp)
+    target_compile_definitions(yw1_diagnostics PRIVATE YW1_EGL_CONTEXT_PROBE=1)
+    if(yw1_callback_profile EQUAL 2)
+        set(yw1_diagnostic_version "B0.2.9-B")
+    else()
+        set(yw1_diagnostic_version "B0.2.9-A")
+    endif()
+endif()
+
 target_link_directories(yw1_diagnostics PRIVATE "${DEVKITPRO}/libnx/lib")
 # SDK本体は変更せず、非PICのdevoptab定数表だけをNROのRW再配置領域へ配置する。
 file(READ "${DEVKITPRO}/libnx/switch.ld" nro_script)

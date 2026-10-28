@@ -108,6 +108,12 @@ if(NOT YW1_EGL_CALLBACK_PROFILE STREQUAL "OFF")
         YW1_BOOTSTRAP_EGL_CALLBACK=1 YW1_CALLBACK_PROFILE=${yw1_callback_profile})
     target_link_libraries(yw1_bootstrap PRIVATE yw1_safe_hook_preparation)
     target_link_options(yw1_bootstrap PRIVATE -Wl,--undefined=yw1_callback_diagnostics)
+    if(YW1_EGL_CONTEXT_PROBE)
+        target_sources(yw1_bootstrap PRIVATE source/bootstrap/context_diagnostic.cpp
+            source/diagnostics/context_wire.cpp source/diagnostics/context_probe.cpp)
+        target_compile_definitions(yw1_bootstrap PRIVATE YW1_EGL_CONTEXT_PROBE=1)
+        target_link_options(yw1_bootstrap PRIVATE -Wl,--undefined=yw1_context_diagnostics)
+    endif()
 endif()
 if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
@@ -166,6 +172,7 @@ if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
             "-DNSO=${CMAKE_CURRENT_BINARY_DIR}/yw1_bootstrap.nso"
             "-DEGL_DIAGNOSTIC=${YW1_BOOTSTRAP_EGL_DIAGNOSTIC}"
             "-DCALLBACK_DIAGNOSTIC=$<BOOL:${yw1_callback_profile}>"
+            "-DCONTEXT_DIAGNOSTIC=$<BOOL:${YW1_EGL_CONTEXT_PROBE}>"
             "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/diagnostic_target.hpp"
             -P "${PROJECT_SOURCE_DIR}/cmake/diagnostic_target.cmake"
         VERBATIM)

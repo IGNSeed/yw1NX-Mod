@@ -49,7 +49,12 @@ void appendCallbackReport(Report& report, const Observation& observation) {
                   "callback_activity=%s game_execution_state=unknown\ncallback_reason=%s\n"
                   "callback_consistency=two_equal_samples_even_configuration_generation\n"
                   "original_code_lifetime=process_stale_BL_allowed_after_restore\n"
+#if YW1_EGL_CONTEXT_PROBE
+                  "callback_fs_io=disabled callback_heap_allocation=disabled "
+                  "GL=bounded_read_probe_only ImGui=disabled\n",
+#else
                   "callback_fs_io=disabled callback_heap_allocation=disabled GL=disabled ImGui=disabled\n",
+#endif
                   static_cast<unsigned long long>(wire[Field::ReentryCount]),
                   static_cast<unsigned>(wire[Field::HookError]),
                   static_cast<unsigned long long>(wire[Field::RollbackAttempted]),

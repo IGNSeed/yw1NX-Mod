@@ -1,4 +1,7 @@
 #include "callback_diagnostic.hpp"
+#if YW1_EGL_CONTEXT_PROBE
+#include "context_diagnostic.hpp"
+#endif
 #include "diagnostics/callback_wire.hpp"
 #include "diagnostics/egl_snapshot.hpp"
 #include "hooking/callsite_installer.hpp"
@@ -266,6 +269,9 @@ void runCallbackDiagnostic(std::uint32_t eglGuard) {
         CallbackThreadPolicy::AtomicDirectBl};
     NativeCallsitePlatform platform(handle, main, *self, wire);
     if constexpr (profile == CallbackProfile::Canary) {
+#if YW1_EGL_CONTEXT_PROBE
+        prepareContextDiagnostic();
+#endif
         static_cast<void>(installer.install(target, platform, wire));
     } else {
         CallsitePlan plan;
@@ -287,7 +293,12 @@ void runCallbackDiagnostic(std::uint32_t eglGuard) {
 }
 } // 名前空間 yw1::bootstrap
 
-extern "C" void yw1_canary_enter() { yw1::diagnostics::recordCallbackEnter(); }
+extern "C" void yw1_canary_enter() {
+    yw1::diagnostics::recordCallbackEnter();
+#if YW1_EGL_CONTEXT_PROBE
+    yw1::bootstrap::probeContextCallback();
+#endif
+}
 extern "C" void yw1_canary_return(std::uint32_t result) {
     yw1::diagnostics::recordCallbackReturn(result);
 }

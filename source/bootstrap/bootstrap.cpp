@@ -14,6 +14,9 @@
 #include "diagnostics/log_export.hpp"
 #if YW1_BOOTSTRAP_EGL_CALLBACK
 #include "diagnostics/callback_wire.hpp"
+#if YW1_EGL_CONTEXT_PROBE
+#include "bootstrap/context_diagnostic.hpp"
+#endif
 #endif
 extern "C" char __module_start;
 #endif
@@ -70,6 +73,9 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
 #if YW1_BOOTSTRAP_EGL_CALLBACK
     yw1::diagnostics::initializeCallbackWire(
         static_cast<yw1::diagnostics::CallbackProfile>(YW1_CALLBACK_PROFILE));
+#if YW1_EGL_CONTEXT_PROBE
+    yw1::bootstrap::initializeContextDiagnostic();
+#endif
 #endif
 #endif
 #if YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC || YW1_BOOTSTRAP_EGL_DIAGNOSTIC

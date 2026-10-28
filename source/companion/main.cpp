@@ -1,4 +1,7 @@
 #include "report.hpp"
+#if YW1_EGL_CONTEXT_PROBE
+#include "context_report.hpp"
+#endif
 
 #include <switch.h>
 
@@ -182,6 +185,9 @@ int main() {
 #endif
 #if YW1_COMPANION_EGL_CALLBACK
     appendCallbackReport(report, observation);
+#endif
+#if YW1_EGL_CONTEXT_PROBE
+    appendContextReport(report, observation);
 #endif
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
@@ -398,12 +404,22 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
+#if YW1_EGL_CONTEXT_PROBE
+            if (codeSnapshotPart >= 4) {
+                showContextPage(observation, codeSnapshotPart == 5);
+                return;
+            }
+#endif
 #if YW1_COMPANION_EGL_CALLBACK
             if (codeSnapshotPart == 3) {
                 using Field = yw1::diagnostics::CallbackField;
                 const auto& wire = observation.callback;
                 std::printf("EGL Callback B0.2.8\nSource: game module\n"
+#if YW1_EGL_CONTEXT_PROBE
+                            "Build Profile: %s  GL: read probe / ImGui: disabled\n"
+#else
                             "Build Profile: %s  GL/ImGui: disabled\n"
+#endif
                             "Read: %08X Legacy ABI: %s\n",
                             YW1_CALLBACK_PROFILE == 2 ? "B / Canary" : "A / Read-only",
                             observation.callbackReadResult, observation.legacyModule ? "yes" : "no");
@@ -445,6 +461,9 @@ int main() {
                             static_cast<unsigned>(wire[Field::CacheResult]),
                             static_cast<unsigned>(wire[Field::CleanupResult]));
                 number("Initialization Stage", Field::InitializationStage);
+#if YW1_EGL_CONTEXT_PROBE
+                std::printf("R: EGL / GL Context\n");
+#endif
                 std::printf("Status: %s\nReason: %s\nGame activity during NRO: unknown\n"
                             "GOT Modification: disabled\nA: summary L: Original EGL B: back\n",
                             yw1::diagnostics::callbackActivity(wire),
@@ -681,7 +700,12 @@ int main() {
             } else {
                 std::printf("Program: unknown\n");
             }
-            std::printf("Snapshot status (MOD): %08X\nHook is disabled in this build\nA: summary "
+            std::printf("Snapshot status (MOD): %08X\n"
+#if YW1_EGL_CONTEXT_PROBE
+                        "Legacy export hook disabled; Main hook: see Callback page\nA: summary "
+#else
+                        "Hook is disabled in this build\nA: summary "
+#endif
                         "L: details B: back\n",
                         egl.snapshotStatus);
 #if YW1_COMPANION_EGL_GOT_PROBE
@@ -751,7 +775,11 @@ int main() {
                     if ((down & HidNpadButton_R) && codeSnapshotPart <
 #if YW1_COMPANION_SALTY_ORIGINAL_EGL
 #if YW1_COMPANION_EGL_CALLBACK
+#if YW1_EGL_CONTEXT_PROBE
+                        5
+#else
                         3
+#endif
 #else
                         2
 #endif
