@@ -1,5 +1,8 @@
 #include "context_report.hpp"
 #include "report.hpp"
+#if YW1_EGL_GETTER_WHITELIST
+#include "diagnostics/egl_hook_guard.hpp"
+#endif
 #include <tuple>
 
 namespace yw1::companion {
@@ -25,16 +28,28 @@ const char* missing(const Observation& observation) {
 }
 } // 無名名前空間
 void appendContextReport(Report& report, const Observation& observation) {
-    report.append("\n=== YW1 EGL GL Context Probe B0.2.9 ===\n"
+    report.append("\n=== YW1 EGL GL Context Probe %s ===\n"
                   "source=module-bootstrap transport=companion-nro\n"
                   "context_wire_read_result=0x%08X old_B028_profile=%u\n"
                   "gl_get_error_called=false egl_get_error_called=false\n"
                   "context_scope=first_bounded_sample_not_live_context_monitor\n",
-                  observation.contextReadResult, observation.b028Profile);
+                  diagnostics::kContextVersion, observation.contextReadResult, observation.b028Profile);
     if (!available(observation)) {
         report.append("context_observation=unknown reason=%s\n", missing(observation)); return;
     }
     const auto& w = observation.context;
+#if YW1_EGL_GETTER_WHITELIST
+    if (w[F::SubsdkBase]) {
+        report.append("probe_subsdk0_base=0x%016llX probe_subsdk0_full_build_id=",
+                      static_cast<unsigned long long>(w[F::SubsdkBase]));
+        for (auto b : diagnostics::kSubsdk0Id) { report.append("%02X", b); }
+        report.append("\nprobe_subsdk0_identity_verified=%s\n",
+                      w[F::GuardResult] == 0 ? "true" : "false");
+    } else { report.append("probe_subsdk0_base=unknown probe_subsdk0_full_build_id=unknown\n"); }
+    report.append("probe_proc_pointer_policy=%s probe_getter_dispatch_mask=0x%llX\n",
+                  diagnostics::kGetterVerificationPolicy,
+                  static_cast<unsigned long long>(w[F::GetterDispatchMask]));
+#endif
     report.append("context_probe_profile=%llu probe_attempted=%llu probe_attempts=%llu "
                   "probe_maximum_attempts=%llu\nprobe_status=%s probe_reason=%s\n"
                   "probe_guard_result=0x%08X probe_thread_result=0x%08X "
@@ -58,9 +73,21 @@ void appendContextReport(Report& report, const Observation& observation) {
                   static_cast<unsigned long long>(w[F::ApiValidatedMask]));
     if (w[F::PointerResult] != UINT32_MAX) {
         report.append("probe_gl_string_pointer=0x%016llX probe_gl_integer_pointer=0x%016llX\n"
-                      "probe_proc_pointer_policy=exact_verified_subsdk0_entry_only\n",
+                      "probe_pointer_verification_result=0x%08X\n",
                       static_cast<unsigned long long>(w[F::GlStringPointer]),
-                      static_cast<unsigned long long>(w[F::GlIntegerPointer]));
+                      static_cast<unsigned long long>(w[F::GlIntegerPointer]),
+                      static_cast<unsigned>(w[F::PointerResult]));
+#if YW1_EGL_GETTER_WHITELIST
+        for (auto [label, field] : {std::pair{"probe_gl_string_relative_offset", F::GlStringPointer},
+                                    {"probe_gl_integer_relative_offset", F::GlIntegerPointer}}) {
+            if (w[F::SubsdkBase] && w[field] >= w[F::SubsdkBase]) {
+                report.append("%s=0x%llX\n", label,
+                    static_cast<unsigned long long>(w[field] - w[F::SubsdkBase]));
+            } else { report.append("%s=unknown_pointer_outside_module\n", label); }
+        }
+#else
+        report.append("probe_proc_pointer_policy=%s\n", diagnostics::kGetterVerificationPolicy);
+#endif
     } else { report.append("probe_gl_string_pointer=not_attempted probe_gl_integer_pointer=not_attempted\n"); }
     for (auto [label, item, field] : {
             std::tuple{"egl_current_api", I::Api, F::CurrentApi},
@@ -80,6 +107,16 @@ void appendContextReport(Report& report, const Observation& observation) {
     const auto text = [&](const char* name, I item, const auto& value) {
         report.append("%s_state=%s\n", name, valueStateName(w.state(item)));
         if (observed(w.state(item))) { report.append("%s=%s\n", name, value.data()); }
+#if YW1_EGL_GETTER_WHITELIST
+        const auto index = static_cast<unsigned>(item) - static_cast<unsigned>(I::Version);
+        report.append("%s_result=0x%08X %s_copy_length=%u\n", name,
+            diagnostics::contextValueResult(w, item), name, diagnostics::contextStringLength(w, index));
+        if (!observed(w.state(item))) {
+            report.append("%s=unknown unavailable_reason=%s\n", name,
+                w.state(item) == ValueState::Failed ? "null_unreadable_or_invalid_string"
+                                                  : valueStateName(w.state(item)));
+        }
+#endif
     };
     text("probe_gl_version", I::Version, w.version); text("probe_gl_vendor", I::Vendor, w.vendor);
     text("probe_gl_renderer", I::Renderer, w.renderer); text("probe_glsl_version", I::Glsl, w.glsl);
@@ -97,14 +134,27 @@ void appendContextReport(Report& report, const Observation& observation) {
             }
         }
         report.append("\n");
+#if YW1_EGL_GETTER_WHITELIST
+        report.append("%s_result=0x%08X\n", name, diagnostics::contextValueResult(w, item));
+        if (!observed(w.state(item))) {
+            report.append("%s=unknown unavailable_reason=%s\n", name,
+                w.state(item) == ValueState::Failed ? "output_unwritten_or_inconsistent"
+                                                  : valueStateName(w.state(item)));
+        }
+#endif
     }
     report.append("probe_query_semantics=observed_output_not_GL_error_verified\n"
                   "probe_snapshot_consistency=two_equal_samples_even_generation\n"
                   "post_capture_context_changes=not_monitored_no_cached_pointer_calls\n");
+#if YW1_EGL_GETTER_WHITELIST
+    report.append("probe_query_result_namespace=mod_output_validation_not_native_GL_Result\n"
+                  "GL_error_state=not_consumed_not_checked Draw=disabled ImGui=disabled\n");
+#endif
 }
 void showContextPage(const Observation& o, bool glPage) {
-    std::printf("EGL / GL Context B0.2.9 %s\nSource: game module  Transport: NRO\n"
-                "Read Result: %08X\n", glPage ? "2/2" : "1/2", o.contextReadResult);
+    std::printf("EGL / GL Context %s %s\nSource: game module  Transport: NRO\n"
+                "Read Result: %08X\n", diagnostics::kContextVersion,
+                glPage ? "2/2" : "1/2", o.contextReadResult);
     if (!available(o)) { std::printf("Context data: unknown\n%s\n", missing(o)); }
     else {
         const auto& w = o.context;
@@ -157,6 +207,11 @@ void showContextPage(const Observation& o, bool glPage) {
                 std::printf("\n");
             }
             std::printf("Read queries; GL error state not consumed/checked.\n");
+#if YW1_EGL_GETTER_WHITELIST
+            std::printf("Copied bytes Version/Vendor/Renderer/GLSL: %u/%u/%u/%u\n",
+                diagnostics::contextStringLength(w, 0), diagnostics::contextStringLength(w, 1),
+                diagnostics::contextStringLength(w, 2), diagnostics::contextStringLength(w, 3));
+#endif
         }
     }
     if (o.callbackReadResult == 0) {

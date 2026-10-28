@@ -1,5 +1,8 @@
 #include "context_diagnostic.hpp"
 #include "diagnostics/context_bindings.hpp"
+#if YW1_EGL_GETTER_WHITELIST
+#include "diagnostics/gl_getter_whitelist.hpp"
+#endif
 #include "diagnostics/context_probe.hpp"
 #include "diagnostics/callback_wire.hpp"
 #include "diagnostics/module_wire.hpp"
@@ -121,8 +124,38 @@ class NativeContextPlatform final : public ContextPlatform {
     }
     bool glPointer(GenericProc pointer, bool stringFunction) override {
         const auto index = stringFunction ? 6u : 7u;
+#if YW1_EGL_GETTER_WHITELIST
+        const auto entry = stringFunction ? 0u : 1u;
+        const auto& binding = kGlGetterWhitelist[entry];
+        const auto address = reinterpret_cast<std::uintptr_t>(pointer);
+        if (!pointer || !contains(text_[0][0], text_[0][1], address, binding.symbol.size) ||
+            !readableRange(address, binding.symbol.size, Perm_Rx)) { return false; }
+        std::array<std::uint32_t, 7> words{};
+        for (unsigned i = 0; i < binding.symbol.size / 4; ++i) {
+            words[i] = __atomic_load_n(reinterpret_cast<const std::uint32_t*>(address) + i,
+                                       __ATOMIC_ACQUIRE);
+        }
+        if (!verifyGlGetter(entry, sub_, address, {words.data(), binding.symbol.size / 4})) {
+            return false;
+        }
+        const auto tablePointer = sub_.base + kGlGetterTablePointer;
+        const auto slot = sub_.base + kGlGetterSlots[entry];
+        if (!readableRange(tablePointer, 8, Perm_R) || !readableRange(slot, 8, Perm_R)) {
+            return false;
+        }
+        const auto table = __atomic_load_n(reinterpret_cast<const std::uintptr_t*>(tablePointer),
+                                           __ATOMIC_ACQUIRE);
+        const auto target = __atomic_load_n(reinterpret_cast<const std::uintptr_t*>(slot),
+                                            __ATOMIC_ACQUIRE);
+        // stubだけの一致で未知の実装へ進まない。既知GL実装の入口と全命令も検証する。
+        return table == sub_.base + kGlGetterTable && code(index, target);
+#else
         return pointer && code(index, reinterpret_cast<std::uintptr_t>(pointer));
+#endif
     }
+#if YW1_EGL_GETTER_WHITELIST
+    std::uint64_t moduleBase() override { return sub_.base; }
+#endif
     bool readable(std::uintptr_t address, std::size_t size) override {
         return readableRange(address, size, Perm_R);
     }

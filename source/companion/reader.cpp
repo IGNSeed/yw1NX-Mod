@@ -12,6 +12,7 @@
 #include <switch.h>
 
 #include <cstring>
+#include <type_traits>
 
 namespace yw1::companion {
 namespace {
@@ -1012,7 +1013,8 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
             if (result != 0) { observation.contextReadResult = result; break; }
             if (first[0] == 0 || (first[0] & 1) || first != second) { continue; }
             diagnostics::ContextWire wire;
-            std::memcpy(&wire, first.data() + 1, sizeof(wire));
+            static_assert(std::is_trivially_copyable_v<diagnostics::ContextWire>);
+            std::memcpy(static_cast<void*>(&wire), first.data() + 1, sizeof(wire));
             observation.contextReadResult = diagnostics::validContextWire(wire) &&
                 wire[diagnostics::ContextField::Profile] == YW1_CALLBACK_PROFILE ? 0 : kInvalidData;
             if (observation.contextReadResult == 0) { observation.context = wire; }

@@ -21,6 +21,9 @@ class ContextPlatform {
     virtual bool glPointer(GenericProc pointer, bool stringFunction) = 0;
     virtual bool readable(std::uintptr_t address, std::size_t size) = 0;
     virtual void publish(const ContextWire& wire) = 0;
+#if YW1_EGL_GETTER_WHITELIST
+    virtual std::uint64_t moduleBase() = 0;
+#endif
   protected:
     // 所有者が静的に保持する参照だけを使い、delete経路を作らない。
     ~ContextPlatform() = default;

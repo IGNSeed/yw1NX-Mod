@@ -6,19 +6,30 @@
 
 namespace yw1::diagnostics {
 constexpr std::uint64_t kContextMagic = 0x394C4745315759;
+#if YW1_EGL_GETTER_WHITELIST
+constexpr std::uint64_t kContextAbi = 2, kContextTag = 0xB00210;
+constexpr char kContextVersion[] = "B0.2.10";
+constexpr char kGetterVerificationPolicy[] = "full_build_id_two_gl_stub_whitelist_and_dispatch";
+#else
 constexpr std::uint64_t kContextAbi = 1, kContextTag = 0xB0029;
+constexpr char kContextVersion[] = "B0.2.9";
+constexpr char kGetterVerificationPolicy[] = "exact_verified_subsdk0_entry_only";
+#endif
 enum class ContextField : unsigned {
     Magic, Abi, Size, BuildTag, Profile, Status, Reason, Attempted, Attempts, GuardResult,
     ThreadResult, SampleCallback, ThreadId, Context, Display, DrawSurface, ReadSurface,
     CurrentApi, BindingValid, BindingChanged, RetryAt, MaximumAttempts, PointerResult,
     ApiValidatedMask, Completed, GlErrorConsumed, EglErrorConsumed, GlStringPointer, GlIntegerPointer,
-    Reserved29, Reserved30, Reserved31
+    Reserved29, Reserved30, Reserved31,
+    SubsdkBase = Reserved29, GetterPolicy = Reserved30, GetterDispatchMask = Reserved31
 };
 enum class ProbeStatus : std::uint64_t { NotAttempted, Disabled, WaitingContext, Captured, Failed };
 enum class ProbeReason : std::uint64_t {
     None, ReadOnly, HookUnavailable, Identity, InvalidPointer, TlsNotReady,
     UnsupportedDispatch, ThreadUnavailable, DifferentThread, NoContext, InvalidBinding,
-    UnsupportedApi, GlFunctionUnavailable, InvalidVersion, BindingChanged, QueryUnwritten
+    UnsupportedApi, GlFunctionUnavailable, InvalidVersion, BindingChanged, QueryUnwritten,
+    NoCallbackObserved, ContextNotCurrent, ApiNotDesktopGl, GlStringFailed,
+    GlIntegerFailed, UnsupportedValueQuery, SnapshotCompleted
 };
 enum class ContextItem : unsigned {
     Api, Context, Display, DrawSurface, ReadSurface, Thread, Version, Vendor, Renderer,
@@ -53,4 +64,8 @@ bool validContextWire(const ContextWire& wire);
 const char* probeStatusName(std::uint64_t status);
 const char* probeReasonName(std::uint64_t reason);
 const char* valueStateName(ValueState state);
+#if YW1_EGL_GETTER_WHITELIST
+std::uint32_t contextValueResult(const ContextWire& wire, ContextItem item);
+std::uint16_t contextStringLength(const ContextWire& wire, unsigned index);
+#endif
 } // 名前空間 yw1::diagnostics

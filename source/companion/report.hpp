@@ -20,7 +20,9 @@
 
 namespace yw1::companion {
 
-#if YW1_EGL_CONTEXT_PROBE
+#if YW1_EGL_GETTER_WHITELIST
+constexpr char kCompanionVersion[] = "B0.2.10";
+#elif YW1_EGL_CONTEXT_PROBE
 constexpr char kCompanionVersion[] = "B0.2.9";
 #elif YW1_COMPANION_EGL_CALLBACK
 constexpr char kCompanionVersion[] = "B0.2.8";

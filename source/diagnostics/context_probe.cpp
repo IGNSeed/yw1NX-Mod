@@ -54,6 +54,9 @@ void ContextProbe::initialize(unsigned profile, const ContextApi& api, ContextPl
     if (busy_.test_and_set(std::memory_order_acquire)) { return; }
     if (!initialized_.load(std::memory_order_relaxed)) {
         api_ = api; platform_ = &platform; wire_ = initialContextWire(profile);
+#if YW1_EGL_GETTER_WHITELIST
+        wire_[F::SubsdkBase] = platform.moduleBase();
+#endif
         if (profile == 1) { terminal_.store(true, std::memory_order_relaxed); }
         platform_->publish(wire_);
         initialized_.store(true, std::memory_order_release);
@@ -154,7 +157,11 @@ void ContextProbe::capture(std::uint64_t count) {
         stop(ProbeReason::InvalidBinding); return;
     }
     wire_[F::BindingValid] = 1;
-    if (wire_[F::CurrentApi] != kDesktop && wire_[F::CurrentApi] != kEs) {
+    if (wire_[F::CurrentApi] != kDesktop
+#if !YW1_EGL_GETTER_WHITELIST
+        && wire_[F::CurrentApi] != kEs
+#endif
+        ) {
         for (unsigned i = static_cast<unsigned>(I::Version); i < 15; ++i) {
             wire_.states[i] = ValueState::Unsupported;
         }
@@ -167,17 +174,39 @@ void ContextProbe::capture(std::uint64_t count) {
     const bool stringValid = stringProc && platform_->glPointer(stringProc, true);
     const bool integerValid = integerProc && platform_->glPointer(integerProc, false);
     wire_[F::PointerResult] = stringValid && integerValid ? 0 : 0xE290;
+#if YW1_EGL_GETTER_WHITELIST
+    wire_[F::GetterDispatchMask] = (stringValid ? 1u : 0u) | (integerValid ? 2u : 0u);
+#endif
     if (!stringValid || !integerValid) { stop(ProbeReason::GlFunctionUnavailable); return; }
     wire_[F::ApiValidatedMask] = 127;
+#if YW1_EGL_GETTER_WHITELIST
+    if (!sameBinding()) { return; }
+#endif
     const auto getString = reinterpret_cast<GlGetString>(stringProc);
     const auto getInteger = reinterpret_cast<GlGetInteger>(integerProc);
-    wire_.state(I::Version) = copyText(wire_.version, getString(0x1F02), *platform_);
+    const auto stringQuery = [&](I item, auto& text, std::uint32_t token,
+                                 [[maybe_unused]] unsigned index) {
+        wire_.state(item) = copyText(text, getString(token), *platform_);
+#if YW1_EGL_GETTER_WHITELIST
+        std::uint64_t length = 0;
+        while (length < text.size() && text[length] != 0) { ++length; }
+        wire_.reserved[0] &= ~(std::uint64_t{0xFFFF} << (index * 16));
+        wire_.reserved[0] |= length << (index * 16);
+#endif
+    };
+    stringQuery(I::Version, wire_.version, 0x1F02, 0);
     std::int32_t major = 0, minor = 0;
     if (wire_.state(I::Version) != ValueState::Observed || !version(wire_, major, minor)) {
+#if YW1_EGL_GETTER_WHITELIST
+        stop(wire_.state(I::Version) == ValueState::Failed ? ProbeReason::GlStringFailed
+                                                         : ProbeReason::UnsupportedValueQuery);
+#else
         stop(ProbeReason::InvalidVersion); return;
+#endif
+        return;
     }
-    wire_.state(I::Vendor) = copyText(wire_.vendor, getString(0x1F00), *platform_);
-    wire_.state(I::Renderer) = copyText(wire_.renderer, getString(0x1F01), *platform_);
+    stringQuery(I::Vendor, wire_.vendor, 0x1F00, 1);
+    stringQuery(I::Renderer, wire_.renderer, 0x1F01, 2);
     const auto query = [&](std::uint32_t name, unsigned offset, unsigned length, I item) {
         for (unsigned i = 0; i < length; ++i) { wire_.integers[offset + i] = kUnwritten; }
         getInteger(name, wire_.integers.data() + offset);
@@ -192,7 +221,7 @@ void ContextProbe::capture(std::uint64_t count) {
         wire_.state(I::Viewport) = ValueState::Failed;
     }
     if (major >= 2) {
-        wire_.state(I::Glsl) = copyText(wire_.glsl, getString(0x8B8C), *platform_);
+        stringQuery(I::Glsl, wire_.glsl, 0x8B8C, 3);
         query(0x8B8D, 5, 1, I::Program);
     } else { wire_.state(I::Glsl) = wire_.state(I::Program) = ValueState::Unsupported; }
     if (major >= 3 || wire_[F::CurrentApi] == kEs) { query(0x8CA6, 4, 1, I::Framebuffer); }
@@ -209,9 +238,25 @@ void ContextProbe::capture(std::uint64_t count) {
     } else { wire_.state(I::Profile) = ValueState::Unsupported; }
     if (!sameBinding()) { return; }
     for (unsigned i = static_cast<unsigned>(I::Version); i < 15; ++i) {
-        if (wire_.states[i] == ValueState::Failed) { stop(ProbeReason::QueryUnwritten); return; }
+        if (wire_.states[i] == ValueState::Failed) {
+#if YW1_EGL_GETTER_WHITELIST
+            stop(i <= static_cast<unsigned>(I::Glsl) ? ProbeReason::GlStringFailed
+                                                    : ProbeReason::GlIntegerFailed);
+#else
+            stop(ProbeReason::QueryUnwritten);
+#endif
+            return;
+        }
     }
     wire_[F::Reason] = 0; wire_[F::Completed] = 1;
+#if YW1_EGL_GETTER_WHITELIST
+    wire_[F::Reason] = static_cast<unsigned>(ProbeReason::SnapshotCompleted);
+    for (unsigned i = static_cast<unsigned>(I::Version); i < 15; ++i) {
+        if (wire_.states[i] == ValueState::Unsupported) {
+            wire_[F::Reason] = static_cast<unsigned>(ProbeReason::UnsupportedValueQuery);
+        }
+    }
+#endif
     wire_[F::Status] = static_cast<unsigned>(ProbeStatus::Captured);
     terminal_.store(true, std::memory_order_release);
 }

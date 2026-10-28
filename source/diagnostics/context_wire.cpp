@@ -13,7 +13,12 @@ ContextWire initialContextWire(unsigned profile) {
     wire[F::Status] = static_cast<unsigned>(profile == 1 ? ProbeStatus::Disabled
                                                        : ProbeStatus::NotAttempted);
     wire[F::Reason] = static_cast<unsigned>(profile == 1 ? ProbeReason::ReadOnly
+#if YW1_EGL_GETTER_WHITELIST
+                                                       : ProbeReason::NoCallbackObserved);
+    wire[F::GetterPolicy] = 1;
+#else
                                                        : ProbeReason::HookUnavailable);
+#endif
     return wire;
 }
 void publishContext(const ContextWire& wire) {
@@ -35,7 +40,12 @@ bool validContextWire(const ContextWire& wire) {
     if (wire[F::Magic] != kContextMagic || wire[F::Abi] != kContextAbi ||
         wire[F::Size] != sizeof(wire) || wire[F::BuildTag] != kContextTag ||
         wire[F::Profile] < 1 || wire[F::Profile] > 2 || wire[F::Status] > 4 ||
-        wire[F::Reason] > static_cast<unsigned>(ProbeReason::QueryUnwritten) ||
+        wire[F::Reason] > static_cast<unsigned>(
+#if YW1_EGL_GETTER_WHITELIST
+            ProbeReason::SnapshotCompleted) ||
+#else
+            ProbeReason::QueryUnwritten) ||
+#endif
         wire[F::Attempted] > 1 || wire[F::Attempts] > 3 || wire[F::MaximumAttempts] != 3 ||
         wire[F::BindingValid] > 1 || wire[F::BindingChanged] > 1 || wire[F::Completed] > 1 ||
         wire[F::GlErrorConsumed] != 0 || wire[F::EglErrorConsumed] != 0 ||
@@ -60,12 +70,34 @@ bool validContextWire(const ContextWire& wire) {
          (wire.integers[2] < 0 || wire.integers[3] < 0))) {
         return false;
     }
+#if YW1_EGL_GETTER_WHITELIST
+    if (wire[F::GetterPolicy] != 1 || wire[F::GetterDispatchMask] > 3 ||
+        (wire[F::SubsdkBase] != 0 && wire[F::SubsdkBase] % 4096) || wire.reserved[1] != 0) {
+        return false;
+    }
+    constexpr std::uint16_t maximum[]{255, 127, 127, 255};
+    for (unsigned i = 0; i < 4; ++i) {
+        if (contextStringLength(wire, i) > maximum[i]) { return false; }
+    }
+    const auto lengthMatches = [&](const auto& text, unsigned index) {
+        unsigned length = 0;
+        while (length < text.size() && text[length] != 0) { ++length; }
+        return length == contextStringLength(wire, index);
+    };
+    if (!lengthMatches(wire.version, 0) || !lengthMatches(wire.vendor, 1) ||
+        !lengthMatches(wire.renderer, 2) || !lengthMatches(wire.glsl, 3) ||
+        (wire[F::Completed] && (wire[F::GetterDispatchMask] != 3 ||
+                                wire[F::CurrentApi] != 0x30A2))) { return false; }
+    return wire.state(ContextItem::Reserved) == ValueState::NotAttempted &&
+        wire.integers[9] == 0 && wire.integers[10] == 0 && wire.integers[11] == 0;
+#else
     for (unsigned i = static_cast<unsigned>(F::Reserved29); i < wire.words.size(); ++i) {
         if (wire.words[i]) { return false; }
     }
     return wire.reserved[0] == 0 && wire.reserved[1] == 0 &&
         wire.state(ContextItem::Reserved) == ValueState::NotAttempted &&
         wire.integers[9] == 0 && wire.integers[10] == 0 && wire.integers[11] == 0;
+#endif
 }
 const char* probeStatusName(std::uint64_t value) {
     constexpr const char* names[]{"not_attempted", "disabled", "waiting_context",
@@ -73,12 +105,23 @@ const char* probeStatusName(std::uint64_t value) {
     return value < 5 ? names[value] : "invalid";
 }
 const char* probeReasonName(std::uint64_t value) {
-    constexpr const char* names[]{"none", "read_only_profile", "hook_unavailable", "identity",
+    [[maybe_unused]] constexpr const char* names[]{"none", "read_only_profile", "hook_unavailable", "identity",
         "invalid_function_pointer", "tls_not_ready", "unsupported_dispatch_error_side_effect",
         "thread_id_unavailable", "different_thread", "no_context", "invalid_binding",
         "unsupported_client_api", "gl_function_not_verified", "invalid_version",
         "binding_changed", "query_output_not_observed"};
-    return value < 17 ? names[value] : "invalid";
+#if YW1_EGL_GETTER_WHITELIST
+    constexpr const char* current[]{"none", "read_only_profile", "hook_unavailable", "identity",
+        "invalid_function_pointer", "tls_not_ready", "unsupported_dispatch_error_side_effect",
+        "thread_id_unavailable", "different_thread", "no_context", "context_not_current",
+        "api_not_desktop_gl", "gl_function_not_verified", "unsupported_value_query",
+        "context_not_current", "gl_integer_call_failed", "no_callback_observed",
+        "context_not_current", "api_not_desktop_gl", "gl_string_call_failed",
+        "gl_integer_call_failed", "unsupported_value_query", "snapshot_completed"};
+    return value < std::size(current) ? current[value] : "invalid";
+#else
+    return value < std::size(names) ? names[value] : "invalid";
+#endif
 }
 const char* valueStateName(ValueState state) {
     constexpr const char* names[]{"not_attempted", "unsupported", "failed", "observed",
@@ -86,4 +129,18 @@ const char* valueStateName(ValueState state) {
     const auto value = static_cast<unsigned>(state);
     return value < 5 ? names[value] : "invalid";
 }
+#if YW1_EGL_GETTER_WHITELIST
+std::uint32_t contextValueResult(const ContextWire& wire, ContextItem item) {
+    switch (wire.state(item)) {
+    case ValueState::NotAttempted: return UINT32_MAX;
+    case ValueState::Unsupported: return 0xE294;
+    case ValueState::Failed: return 0xE293;
+    case ValueState::Observed: case ValueState::Truncated: return 0;
+    }
+    return 0xE295;
+}
+std::uint16_t contextStringLength(const ContextWire& wire, unsigned index) {
+    return index < 4 ? static_cast<std::uint16_t>(wire.reserved[0] >> (index * 16)) : 0;
+}
+#endif
 } // 名前空間 yw1::diagnostics
