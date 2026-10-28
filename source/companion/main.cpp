@@ -1,4 +1,7 @@
 #include "report.hpp"
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+#include "demo_report.hpp"
+#endif
 #if YW1_EGL_CONTEXT_PROBE
 #include "context_report.hpp"
 #endif
@@ -188,6 +191,9 @@ int main() {
 #endif
 #if YW1_EGL_CONTEXT_PROBE
     appendContextReport(report, observation);
+#endif
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+    appendDemoReport(report, observation);
 #endif
     bool writerActive = observation.moduleDetected == 1;
     if (observation.snapshotRead) {
@@ -404,6 +410,9 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+            if (codeSnapshotPart == 6) { showDemoPage(observation); return; }
+#endif
 #if YW1_EGL_CONTEXT_PROBE
             if (codeSnapshotPart >= 4) {
                 showContextPage(observation, codeSnapshotPart == 5);
@@ -776,7 +785,11 @@ int main() {
 #if YW1_COMPANION_SALTY_ORIGINAL_EGL
 #if YW1_COMPANION_EGL_CALLBACK
 #if YW1_EGL_CONTEXT_PROBE
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+                        6
+#else
                         5
+#endif
 #else
                         3
 #endif

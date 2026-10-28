@@ -1028,6 +1028,19 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
                static_cast<std::size_t>(count) < capacity, observation.pid, title, observation.got);
     observation.cleanupFailed = reader.quarantined();
 #endif
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+    if (!observation.legacyModule && !observation.b028Profile && !reader.quarantined()) {
+        diagnostics::DemoWire first{}, second{};
+        auto rc = reader.read(kDemoOffset, &first, sizeof(first));
+        if (rc == 0) { rc = reader.read(kDemoOffset, &second, sizeof(second)); }
+        if (rc == 0 && (first != second || !diagnostics::validDemoWire(first, YW1_DEMO_PROFILE))) {
+            rc = kInvalidData;
+        }
+        observation.demoReadResult = rc;
+        if (rc == 0) { observation.demo = first; }
+        observation.cleanupFailed = reader.quarantined();
+    }
+#endif
 }
 
 } // 無名名前空間

@@ -222,6 +222,12 @@ void showContextPage(const Observation& o, bool glPage) {
             static_cast<unsigned long long>(o.callback[C::OriginalReturns]));
     }
     std::printf("EGL/GL GetError: never called. Draw/ImGui: disabled\n"
-                "A: summary L: previous %s B: back\n", glPage ? "" : "R: GL page");
+                "A: summary L: previous %s B: back\n", glPage ?
+#if YW1_IMGUI_DEMO_DIAGNOSTICS
+                "R: Demo status"
+#else
+                ""
+#endif
+                : "R: GL page");
 }
 } // 名前空間 yw1::companion

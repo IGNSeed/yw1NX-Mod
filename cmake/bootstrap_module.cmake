@@ -123,6 +123,15 @@ if(YW1_BOOTSTRAP_FS_DIAGNOSTIC)
         "${PROJECT_SOURCE_DIR}/source/bootstrap/fs_diagnostic.cpp")
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_FS_DIAGNOSTIC=1)
 endif()
+if(YW1_IMGUI_DEMO_DIAGNOSTICS)
+    set(yw1_demo_profile ${yw1_callback_profile})
+    if(YW1_IMGUI_DEMO_EXPERIMENTAL)
+        set(yw1_demo_profile 3)
+    endif()
+    target_sources(yw1_bootstrap PRIVATE source/diagnostics/demo_wire.cpp)
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_DEMO_PROFILE=${yw1_demo_profile})
+    target_link_options(yw1_bootstrap PRIVATE -Wl,--undefined=yw1_demo_diagnostics)
+endif()
 if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
     target_sources(yw1_bootstrap PRIVATE
         "${PROJECT_SOURCE_DIR}/source/diagnostics/module_state.cpp"
@@ -176,6 +185,7 @@ if(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS)
             "-DEGL_DIAGNOSTIC=${YW1_BOOTSTRAP_EGL_DIAGNOSTIC}"
             "-DCALLBACK_DIAGNOSTIC=$<BOOL:${yw1_callback_profile}>"
             "-DCONTEXT_DIAGNOSTIC=$<BOOL:${YW1_EGL_CONTEXT_PROBE}>"
+            "-DDEMO_DIAGNOSTIC=$<BOOL:${YW1_IMGUI_DEMO_DIAGNOSTICS}>"
             "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/diagnostic_target.hpp"
             -P "${PROJECT_SOURCE_DIR}/cmake/diagnostic_target.cmake"
         VERBATIM)

@@ -85,6 +85,18 @@ if(YW1_EGL_GETTER_WHITELIST)
     endif()
 endif()
 
+if(YW1_IMGUI_DEMO_DIAGNOSTICS)
+    target_sources(yw1_diagnostics PRIVATE source/companion/demo_report.cpp)
+    target_compile_definitions(yw1_diagnostics PRIVATE
+        YW1_IMGUI_DEMO_DIAGNOSTICS=1 YW1_DEMO_PROFILE=${yw1_demo_profile})
+    if(yw1_demo_profile EQUAL 3)
+        set(yw1_diagnostic_version "B0.2.11-C-OFF")
+    elseif(yw1_demo_profile EQUAL 2)
+        set(yw1_diagnostic_version "B0.2.11-B")
+    else()
+        set(yw1_diagnostic_version "B0.2.11-A")
+    endif()
+endif()
 target_link_directories(yw1_diagnostics PRIVATE "${DEVKITPRO}/libnx/lib")
 # SDK本体は変更せず、非PICのdevoptab定数表だけをNROのRW再配置領域へ配置する。
 file(READ "${DEVKITPRO}/libnx/switch.ld" nro_script)
