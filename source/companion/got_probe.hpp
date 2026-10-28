@@ -9,6 +9,9 @@
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
 #include "code_snapshot.hpp"
 #endif
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+#include "salty_original.hpp"
+#endif
 
 namespace yw1::companion {
 struct ModuleRecord;
@@ -53,6 +56,9 @@ struct GotObservation {
 #endif
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
     CodeSnapshot snapshot{};
+#endif
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+    OriginalEglObservation original{};
 #endif
 };
 

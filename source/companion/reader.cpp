@@ -96,6 +96,52 @@ class BoundReader {
         return 0;
     }
 #endif
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+    Result readOriginal(const GotObservation& got, OriginalEglObservation& output) {
+        if (quarantined_) {
+            return kSessionClosed;
+        }
+        if (originalStoragePreflight(got, output) != 0) {
+            return output.preflight;
+        }
+        if (!envIsSyscallHinted(0x74) || !envIsSyscallHinted(0x75)) {
+            return kUnavailable;
+        }
+        virtmemLock();
+        auto* destination = virtmemFindAslr(4096, 4096);
+        if (destination == nullptr) {
+            virtmemUnlock();
+            return kNoAddress;
+        }
+        output.mapAttempted = true;
+        output.map = svcMapProcessMemory(destination, process_, output.pageAddress, 4096);
+        if (output.map != 0) {
+            virtmemUnlock();
+            return output.map;
+        }
+        // 固定保存先の整列8 byteだけを二度読む。source/aliasには書き込まない。
+        const auto* value = reinterpret_cast<const std::uint64_t*>(
+            static_cast<const unsigned char*>(destination) + output.pageOffset);
+        output.readAttempted = true;
+        const auto first = __atomic_load_n(value, __ATOMIC_ACQUIRE);
+        const auto second = __atomic_load_n(value, __ATOMIC_ACQUIRE);
+        output.readsMatched = first == second;
+        output.read = output.readsMatched ? 0 : kSnapshotMismatch;
+        output.unmapAttempted = true;
+        output.unmap = svcUnmapProcessMemory(destination, process_, output.pageAddress, 4096);
+        quarantined_ = output.unmap != 0;
+        output.readerQuarantined = quarantined_;
+        virtmemUnlock();
+        if (output.unmap != 0) {
+            return output.unmap;
+        }
+        if (output.read != 0) {
+            return output.read;
+        }
+        output.pointer = first;
+        return 0;
+    }
+#endif
     bool quarantined() const {
         return quarantined_;
     }
@@ -207,7 +253,8 @@ void inspectTargetMemory(Handle process, std::span<const ModuleRecord> modules,
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
 Result revalidateSnapshot(BoundReader& reader, Handle process, const ModuleRecord& main,
                           std::uint64_t expectedPid, std::uint64_t expectedTitle,
-                          const GotObservation& got, CodeSnapshot& output, bool before) {
+                          const GotObservation& got, CodeSnapshot& output, bool before,
+                          std::span<const ModuleRecord> expectedModules = {}) {
     auto& pidResult = before ? output.beforePid : output.afterPid;
     auto& titleResult = before ? output.beforeTitle : output.afterTitle;
     auto& gotResult = before ? output.beforeGot : output.afterGot;
@@ -254,6 +301,19 @@ Result revalidateSnapshot(BoundReader& reader, Handle process, const ModuleRecor
     }
     if (modules[index].base != main.base || modules[index].size != main.size) {
         return mainResult = kSnapshotChanged;
+    }
+    if (!expectedModules.empty()) {
+        if (static_cast<std::size_t>(count) != expectedModules.size() ||
+            !validTargetModules({modules, static_cast<std::size_t>(count)})) {
+            return mainResult = kSnapshotChanged;
+        }
+        for (std::size_t i = 0; i < expectedModules.size(); ++i) {
+            if (modules[i].base != expectedModules[i].base ||
+                modules[i].size != expectedModules[i].size ||
+                !equalId(modules[i].buildId, expectedModules[i].buildId)) {
+                return mainResult = kSnapshotChanged;
+            }
+        }
     }
 #endif
     gotResult = reader.readGot(main, value);
@@ -319,6 +379,123 @@ void inspectCodeSnapshot(BoundReader& reader, Handle process, const ModuleRecord
         output.bytes.fill(0);
     }
 }
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+Result queryOriginalRegion(Handle process, std::uint64_t address,
+                           const TargetMemoryObservation& bounds, TargetMemoryObservation& out) {
+    out.addressBaseResult = bounds.addressBaseResult;
+    out.addressSizeResult = bounds.addressSizeResult;
+    out.addressSpaceBase = bounds.addressSpaceBase;
+    out.addressSpaceSize = bounds.addressSpaceSize;
+    MemoryInfo info{};
+    u32 pageInfo = 0;
+    out.queryAttempted = true;
+    out.queryResult = svcQueryProcessMemory(&info, &pageInfo, process, address);
+    if (out.queryResult != 0) {
+        return out.queryResult;
+    }
+    out.infoReturned = true;
+    out.region = {info.addr, info.size, info.type, info.attr, info.perm,
+                  info.ipc_refcount, info.device_refcount};
+    validateTargetRegion(address, out);
+    return out.validationResult;
+}
+
+Result recheckOriginalIdentity(BoundReader& reader, Handle process,
+                               std::span<const ModuleRecord> modules, const ModuleRecord& main,
+                               std::uint64_t pid, std::uint64_t title, const GotObservation& got) {
+    CodeSnapshot current;
+    auto result = revalidateSnapshot(reader, process, main, pid, title, got, current, true, modules);
+    if (result != 0) {
+        return result;
+    }
+    result = reader.readSnapshot(got, current);
+    if (result != 0) {
+        return result;
+    }
+    // 前後で現在の64 byteも照合する。完全なイメージ同一性や原子性は主張しない。
+    return current.bytes == got.snapshot.bytes ? 0 : kOriginalIdentityMismatch;
+}
+
+Result recheckOriginalStorage(Handle process, const GotObservation& got,
+                              const OriginalEglObservation& expected) {
+    auto current = expected;
+    current.storage = {};
+    const auto result = queryOriginalRegion(process, current.storageAddress, got.memory,
+                                             current.storage);
+    if (result != 0) {
+        return result;
+    }
+    if (!sameSnapshotRegion(current.storage.region, expected.storage.region)) {
+        return kSnapshotChanged;
+    }
+    return originalStoragePreflight(got, current);
+}
+
+void inspectOriginal(BoundReader& reader, Handle process, std::span<const ModuleRecord> modules,
+                     const ModuleRecord& main, std::uint64_t pid, std::uint64_t title,
+                     GotObservation& got) {
+    auto& out = got.original;
+    const auto inspect = [&]() -> Result {
+        if (reader.quarantined()) {
+            return kSessionClosed;
+        }
+        std::array<std::uint8_t, 32> digest{};
+        if (got.snapshot.bytesValid && got.snapshot.result == 0) {
+            sha256CalculateHash(digest.data(), got.snapshot.bytes.data(), kSnapshotLength);
+        }
+        auto result = deriveOriginalStorage(got, digest, out);
+        if (result != 0) {
+            return result;
+        }
+        out.storageQueryAttempted = true;
+        result = queryOriginalRegion(process, out.storageAddress, got.memory, out.storage);
+        out.storageInfoReturned = out.storage.infoReturned;
+        if (result != 0) {
+            return result;
+        }
+        result = originalStoragePreflight(got, out);
+        if (result != 0) {
+            return result;
+        }
+        out.beforeValidation = recheckOriginalIdentity(reader, process, modules, main, pid, title, got);
+        if (out.beforeValidation != 0) {
+            return out.beforeValidation;
+        }
+        out.beforeStorage = recheckOriginalStorage(process, got, out);
+        if (out.beforeStorage != 0) {
+            return out.beforeStorage;
+        }
+        result = reader.readOriginal(got, out);
+        if (result != 0) {
+            return result;
+        }
+        out.afterStorage = recheckOriginalStorage(process, got, out);
+        if (out.afterStorage != 0) {
+            return out.afterStorage;
+        }
+        out.postvalidation = recheckOriginalIdentity(reader, process, modules, main, pid, title, got);
+        if (out.postvalidation != 0) {
+            return out.postvalidation;
+        }
+        out.snapshotValid = true;
+        // 得られた値の参照先は属性だけを照会する。Map・命令読取・呼出しは行わない。
+        if (out.pointer != 0 && out.pointer % 4 == 0 &&
+            validTargetAddress(out.pointer, got.memory.addressSpaceBase, got.memory.addressSpaceSize)) {
+            out.pointerQueryAttempted = true;
+            queryOriginalRegion(process, out.pointer, got.memory, out.target);
+            out.pointerQuery = out.target.queryResult;
+            out.pointerInfoReturned = out.target.infoReturned;
+        }
+        classifyOriginalPointer(modules, got, out);
+        return 0;
+    };
+    out.result = inspect();
+    out.readerQuarantined = reader.quarantined();
+    if (!out.snapshotValid) {
+        out.pointer = 0;
+    }
+}
+#endif
 #endif
 #endif
 bool validGameInfo(const MemoryInfo& info, std::uint64_t address, std::size_t size) {
@@ -368,6 +545,9 @@ void inspectGot(BoundReader& reader, Handle process, std::span<const ModuleRecor
     inspectTargetMemory(process, modules, output);
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
     inspectCodeSnapshot(reader, process, modules[main], pid, title, output);
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+    inspectOriginal(reader, process, modules, modules[main], pid, title, output);
+#endif
 #endif
 #else
     if (output.normalizedKnown && envIsSyscallHinted(0x76)) {

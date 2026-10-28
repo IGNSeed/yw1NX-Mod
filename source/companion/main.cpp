@@ -395,6 +395,59 @@ int main() {
             consoleClear();
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+            if (codeSnapshotPart == 2) {
+                const auto& original = got.original;
+                std::printf("SaltyNX Original EGL B0.2.7\nSource: game process  Mode: read-only\n"
+                            "SaltyNX Version: 1.9.3 reference\nCore Identity: %08X\n",
+                            original.identity);
+                if (original.coreKnown) {
+                    std::printf("Core: %016llX GOT Target: %016llX\nEGL::Swap Offset: 0x1E80\n"
+                                "Original Storage: %016llX (+0x2A3B8)\n",
+                                static_cast<unsigned long long>(original.coreBase),
+                                static_cast<unsigned long long>(got.slotValue),
+                                static_cast<unsigned long long>(original.storageAddress));
+                } else {
+                    std::printf("Core / Original Storage: unknown\n");
+                }
+                if (original.storageInfoReturned) {
+                    const auto& region = original.storage.region;
+                    std::printf("Storage Region: %016llX +%llX\nStorage Type: %X Permission: %X\n",
+                                static_cast<unsigned long long>(region.base),
+                                static_cast<unsigned long long>(region.size), region.type,
+                                region.permission);
+                } else {
+                    std::printf("Storage Region / Type / Permission: unknown\n");
+                }
+                std::printf("Result: %08X Preflight: %08X\nBefore: %08X / %08X\n"
+                            "Map: %08X Read: %08X Unmap: %08X\n"
+                            "After Storage: %08X Postvalidation: %08X\n",
+                            original.result, original.preflight, original.beforeValidation,
+                            original.beforeStorage, original.map, original.read, original.unmap,
+                            original.afterStorage, original.postvalidation);
+                if (original.snapshotValid) {
+                    std::printf("Original Pointer: %016llX\n",
+                                static_cast<unsigned long long>(original.pointer));
+                } else {
+                    std::printf("Original Pointer: unknown\n");
+                }
+                if (original.moduleKnown) {
+                    std::printf("Original Module: %s Offset: +%llX\n", original.moduleName,
+                                static_cast<unsigned long long>(original.moduleOffset));
+                } else {
+                    std::printf("Original Module / Relative Offset: unknown\n");
+                }
+                std::printf("Original Executable: %s\nClassification: %s\n"
+                            "Matches subsdk0 export: %s\nSnapshot Valid: %s Quarantined: %s\n"
+                            "Identity: 64-byte window/layout only\n"
+                            "Hook Active: no GOT Modification: disabled\n"
+                            "A: summary L: HEX page B: back\n",
+                            targetBoolean(original.executable), originalPointerKindName(original.kind),
+                            targetBoolean(original.expectedExport), targetBoolean(original.snapshotValid),
+                            targetBoolean(original.readerQuarantined));
+                return;
+            }
+#endif
             std::printf("EGL GOT Code Snapshot %s\nSource: game process  Mode: read-only\n"
                         "GOT Read: %08X Target Query: %08X\n",
                         kCompanionVersion, got.readResult, got.memory.queryResult);
@@ -415,6 +468,9 @@ int main() {
                 std::printf("No target execution or branch following.\n"
                             "Hook Active: no GOT Modification: disabled\n"
                             "A: summary L: Snapshot status B: back\n");
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+                std::printf("R: SaltyNX Original EGL\n");
+#endif
                 return;
             }
             std::printf("PID: %llu Expected Title ID: %016llX\nInitial Main Full Build ID Verified: %s\n"
@@ -632,11 +688,17 @@ int main() {
 #if YW1_COMPANION_EGL_CODE_SNAPSHOT
                 else if (codeSnapshotPage) {
 #if YW1_COMPANION_EGL_CODE_ATTRIBUTION
-                    if ((down & HidNpadButton_R) && codeSnapshotPart == 0) {
-                        codeSnapshotPart = 1;
+                    if ((down & HidNpadButton_R) && codeSnapshotPart <
+#if YW1_COMPANION_SALTY_ORIGINAL_EGL
+                        2
+#else
+                        1
+#endif
+                    ) {
+                        ++codeSnapshotPart;
                         showCodeSnapshot();
-                    } else if ((down & HidNpadButton_L) && codeSnapshotPart == 1) {
-                        codeSnapshotPart = 0;
+                    } else if ((down & HidNpadButton_L) && codeSnapshotPart > 0) {
+                        --codeSnapshotPart;
                         showCodeSnapshot();
                     } else
 #endif
