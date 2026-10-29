@@ -1,13 +1,27 @@
 # yw1NX-Mod
 
 「妖怪ウォッチ1 for Nintendo Switch」向けMODの開発基盤です。
-Phase 1 Stage B.0.1の開発用Bootstrapを追加しました。固定版exlaunchのModule初期化と
-`exl_main`への到達を診断します。Switch実機での起動・権限・ログ取得はPENDINGです。
-ゲームの描画・入力Hook、ImGui描画、ゲーム機能変更は実装していません。
+Phase 1 Stage B.0.2.14では、固定版exlaunchの追加Moduleと既存EGL Callbackから、
+公式Dear ImGui / OpenGL3の実験描画へ接続しています。Nativeの最小ウィンドウと公式Demoは
+別々の明示した開発用Profileです。Hostの実OpenGL描画を検証済みですが、
+この版のSwitch実機表示とゲームプレイ継続はPENDINGです。
+入力連携、独自メニュー、ゲーム機能変更は実装していません。
 
 基準バージョンは1.4.0、Title IDは`0100C0000CEEA000`です。
 EdiZon表示値`7F35BDFC5DE46CF1`は完全なNSO Build IDと区別します。
 ゲームダンプ・解析DB・解析結果・ローカルツール・テストは公開しません。
+
+描画の既定値はOFFです。`YW1_NATIVE_RENDER_EXPERIMENT=ON` は、ABI4診断、描画基盤、
+CANARY Callback、`YW1_IMGUI_RENDER_MODE=MINIMAL` または `DEMO` の明示設定を要求します。
+`DIAGNOSTIC` はArena・GL Resolver・Context監視までで描画しません。A/BにもImGuiを
+リンクしません。対象識別、固定命令、関数Pointer、EGL Binding、Render Thread、
+Stack余裕、1MiB以上の私有Arenaを確認してからNative初期化へ進みます。
+
+正常経路の実験Admissionと任意OOM完全回復の証明は別です。後者は未証明です。
+既知の容量不足を事前拒否し、検出した割当失敗後は描画を停止しますが、
+上流内部の任意OOMから常に復帰できるとは保証しません。Context喪失・変更後は再描画せず、
+旧GPU資源を別Contextで解放しません。新しいゲームprocessで初期状態へ戻ります。
+ModuleはゲームのAllocatorやFSを使用せず、診断NROが既存の唯一のログ保存先を使用します。
 
 ## ビルド
 
@@ -27,7 +41,10 @@ Linuxでは`DEVKITPRO`環境変数または`-DDEVKITPRO=/opt/devkitpro`を指定
 MSVCなどのホスト環境でも、toolchain指定を省略して静的ライブラリをビルドできます。
 ホスト動作の検証とSwitch実機での動作確認は別の判定です。
 
-### Bootstrap（開発用）
+### Bootstrap（B.0.1の基礎構成、開発用）
+
+以下は描画を含まない初期Bootstrap・旧SD Workerの説明です。
+B.0.2.14のNative描画は上記の明示した実験構成を使用し、旧Workerを併用しません。
 
 こちらはCMake 3.24以上、C++23対応devkitA64、devkitProの`elf2nso`が必要です。
 上記と別のビルド先を指定します。
@@ -109,6 +126,8 @@ Bootstrapを有効にした場合のみ、固定版exlaunchの必要なソース
 - [imgui-xeno](https://github.com/roccodev/imgui-xeno): GPL-2.0、CMake/C++23、NVN backend。
   指定リビジョンに固定されたDear ImGuiと、同梱のNNSDK関連宣言を使用する構成です。
 - [Dear ImGui](https://github.com/ocornut/imgui): MIT。独立調査版とimgui-xenoの固定版は別です。
+- [stb_sprintf](https://github.com/nothings/stb): 固定1.10、MITを選択。
+  Native実験だけで有界書式化に使用し、元の二重ライセンス全文を取得先に保持します。
 
 取得したexlaunchのLICENSE・著作権表示を保持します。リンクした成果物の配布時は
 GPL-2.0の条件に従い、対応ソースとこのビルド設定を併せて扱ってください。

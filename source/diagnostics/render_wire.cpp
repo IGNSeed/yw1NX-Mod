@@ -24,29 +24,61 @@ void publishRender(const RenderWire& wire) {
 #endif
 bool validRenderWire(const RenderWire& w, unsigned expectedProfile, unsigned expectedMode) {
     using F = RenderField;
-    if (expectedProfile < 1 || expectedProfile > 3 || expectedMode > 2 ||
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    constexpr auto maxMode = 3, maxStage = 6, maxReason = 15;
+#else
+    constexpr auto maxMode = 2, maxStage = 5, maxReason = 10;
+#endif
+    if (expectedProfile < 1 || expectedProfile > 3 || expectedMode > maxMode ||
         (expectedProfile != 3 && expectedMode != 0) || (expectedProfile == 3 && expectedMode == 0) ||
         w[F::Magic] != kRenderMagic || w[F::Abi] != kRenderAbi || w[F::Size] != sizeof(w) ||
         w[F::BuildTag] != kRenderTag || w[F::Profile] != expectedProfile || w[F::Mode] != expectedMode ||
-        w[F::Stage] > static_cast<unsigned>(RenderStage::Admission) ||
-        w[F::DisableReason] > static_cast<unsigned>(RenderDisable::OomUnproven) ||
+        w[F::Stage] > maxStage || w[F::DisableReason] > maxReason ||
         w[F::ArenaInitialized] > 1 || w[F::GlRequired] != 60 || w[F::GlVerified] > 60 ||
         w[F::GlAttempted] > 60 || w[F::GlRejected] > 60 ||
         (w[F::GlResult] > 6 && w[F::GlResult] != UINT32_MAX) ||
         w[F::GlAttempted] != w[F::GlVerified] + w[F::GlRejected] ||
         (w[F::BindingResult] > 6 && w[F::BindingResult] != UINT32_MAX) ||
         w[F::Api] > UINT32_MAX || w[F::LoaderAttempts] > 1 ||
-        w[F::ContextChecks] > w[F::Callbacks] || w[F::Skips] != w[F::Callbacks] ||
+        w[F::ContextChecks] > w[F::Callbacks] || w[F::Skips] > w[F::Callbacks] ||
         w[F::ArenaUsed] > w[F::ArenaPeak] || w[F::ArenaPeak] > w[F::ArenaCapacity] ||
         w[F::ArenaFrees] > w[F::ArenaAllocations] || w[F::ThreadResult] > UINT32_MAX ||
         (w[F::GlFirstFailure] != UINT32_MAX && w[F::GlFirstFailure] >= 61)) { return false; }
-    // 実機の任意OOM契約は未成立。この版のModuleが描画したという記録は受け付けない。
+#if !YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    // 旧版では描画したという記録を受け付けない。
+    if (w[F::Skips] != w[F::Callbacks]) { return false; }
     for (auto f : {F::InitAttempts, F::ImGuiContexts, F::NewFrames, F::DrawSubmitted,
                    F::Shader, F::Font, F::Buffer, F::StateSaves, F::StateRestores,
                    F::StateFailures, F::BackendFailure, F::MemoryContractProven,
                    F::PointerCallsAllowed}) {
         if (w[f]) { return false; }
     }
+#else
+    const auto expected = initialRenderWire(expectedProfile, expectedMode);
+    if (w[F::ExperimentalEnabled] != expected[F::ExperimentalEnabled] ||
+        w[F::NativeLinked] != expected[F::NativeLinked] || w[F::MemoryContractProven] ||
+        w[F::PointerCallsAllowed] || w[F::NormalPathAdmission] > 1 || w[F::ContextLive] > 1 ||
+        w[F::BackendInitialized] > 1 || w[F::RendererDisabled] > 1 || w[F::AllocatorType] > 1 ||
+        w[F::Shader] > 2 || w[F::Font] > 2 || w[F::Buffer] > 2 ||
+        w[F::BackendFailure] > 12 || w[F::NewFrames] > w[F::Callbacks] ||
+        w[F::ImGuiContexts] > w[F::InitAttempts] || w[F::InitFailures] > w[F::InitAttempts] ||
+        w[F::ArenaLive] != w[F::ArenaAllocations] - w[F::ArenaFrees] ||
+        w[F::RenderCalls] > w[F::NewFrames] ||
+        (w[F::LastRenderResult] > 9 && w[F::LastRenderResult] != UINT32_MAX) ||
+        w[F::StateRestores] > w[F::StateSaves]) { return false; }
+    if (w[F::NormalPathAdmission] && (!w[F::ExperimentalEnabled] ||
+        !w[F::ArenaInitialized] || w[F::GlVerified] != 60 || w[F::GlResult])) { return false; }
+    if (w[F::DrawSubmitted] && (!w[F::NormalPathAdmission] || !w[F::RenderCalls])) { return false; }
+    if (w[F::BackendInitialized] && !w[F::ContextLive]) { return false; }
+    if (!w[F::ExperimentalEnabled]) {
+        for (auto f : {F::InitAttempts, F::ImGuiContexts, F::NewFrames, F::DrawSubmitted,
+            F::RenderCalls, F::NormalPathAdmission, F::ContextLive, F::BackendInitialized,
+            F::Shader, F::Font, F::Buffer, F::StateSaves, F::StateRestores, F::StateFailures,
+            F::BackendFailure, F::InitFailures}) {
+            if (w[f]) { return false; }
+        }
+    }
+#endif
     constexpr auto requiredMask = [] {
         std::uint64_t mask = 0;
         for (unsigned i = 0; i < std::size(render::kGlFunctions); ++i) {
@@ -67,7 +99,11 @@ bool validRenderWire(const RenderWire& w, unsigned expectedProfile, unsigned exp
         w[F::ArenaReserved] < w[F::ArenaUsed] || w[F::ArenaLargestFree] > w[F::ArenaCapacity]) {
         return false;
     }
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    constexpr auto reserved = F::Reserved79;
+#else
     constexpr auto reserved = F::Reserved60;
+#endif
 #else
     constexpr auto reserved = F::Reserved53;
 #endif
@@ -85,7 +121,8 @@ bool validRenderWire(const RenderWire& w, unsigned expectedProfile, unsigned exp
 const char* renderReasonName(std::uint64_t value) {
     constexpr const char* names[]{"profile_disabled", "none", "concurrent_or_reentrant", "identity",
         "context_unavailable", "different_thread", "binding_changed", "context_lost", "arena",
-        "gl_resolver_rejected", "arbitrary_imgui_oom_unproven"};
+        "gl_resolver_rejected", "arbitrary_imgui_oom_unproven", "diagnostic_only",
+        "swap_binding_mismatch", "frame_input", "renderer_stopped", "stack_headroom"};
     return value < std::size(names) ? names[value] : "invalid";
 }
 } // 名前空間 yw1::diagnostics

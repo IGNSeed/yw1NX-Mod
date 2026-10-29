@@ -32,5 +32,9 @@ target_compile_features(yw1_render_foundation PUBLIC cxx_std_20)
 target_compile_definitions(yw1_render_foundation PRIVATE IMGUI_IMPL_OPENGL_LOADER_CUSTOM)
 set_source_files_properties("${yw1_safe_backend}" PROPERTIES
     COMPILE_OPTIONS "-include;${yw1_render}/opengl_loader.hpp")
-target_compile_options(yw1_render_foundation PRIVATE -fPIC -fno-exceptions -fno-rtti -fstack-usage)
+target_compile_options(yw1_render_foundation PRIVATE -fPIC -fno-exceptions -fno-rtti -fstack-usage
+    -ffunction-sections -fdata-sections)
+if(YW1_NATIVE_RENDER_EXPERIMENT)
+    include(cmake/native_imgui_runtime.cmake)
+endif()
 target_link_libraries(yw1_render_foundation PUBLIC yw1_render_guards)

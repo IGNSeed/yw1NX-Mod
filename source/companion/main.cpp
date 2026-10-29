@@ -1,4 +1,7 @@
 #include "report.hpp"
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+#include "activation_report.hpp"
+#endif
 #if YW1_RENDER_DIAGNOSTICS
 #include "render_report.hpp"
 #endif
@@ -197,6 +200,9 @@ int main() {
 #endif
 #if YW1_RENDER_DIAGNOSTICS
     appendRenderReport(report, observation);
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    appendActivationReport(report, observation);
+#endif
 #endif
 #if YW1_IMGUI_DEMO_DIAGNOSTICS
     appendDemoReport(report, observation);
@@ -417,6 +423,9 @@ int main() {
             const auto& got = observation.got;
             const auto& snapshot = got.snapshot;
 #if YW1_RENDER_DIAGNOSTICS
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+            if (codeSnapshotPart == 8) { showActivationPage(observation); return; }
+#endif
             if (codeSnapshotPart >= 6) { showRenderPage(observation, codeSnapshotPart == 7); return; }
 #endif
 #if YW1_IMGUI_DEMO_DIAGNOSTICS
@@ -795,7 +804,11 @@ int main() {
 #if YW1_COMPANION_EGL_CALLBACK
 #if YW1_EGL_CONTEXT_PROBE
 #if YW1_RENDER_DIAGNOSTICS
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+                        8
+#else
                         7
+#endif
 #else
 #if YW1_IMGUI_DEMO_DIAGNOSTICS
                         6

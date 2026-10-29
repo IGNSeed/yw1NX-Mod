@@ -7,9 +7,10 @@ struct ImGuiContext;
 
 namespace yw1::render {
 enum class RenderMode : unsigned { Off, Minimal, Demo };
-enum class MemoryAdmission : unsigned { Unproven, IsolatedHostProcess };
+enum class MemoryAdmission : unsigned { Unproven, IsolatedHostProcess, NativeExperimental };
 enum class RenderResult : unsigned {
-    Submitted, Disabled, Context, MemoryUnproven, Budget, InvalidFrame, Backend, State, NoCommands
+    Submitted, Disabled, Context, MemoryUnproven, Budget, InvalidFrame, Backend, State, NoCommands,
+    AllocationFailure
 };
 struct FrameInput {
     unsigned width = 0, height = 0;
@@ -21,6 +22,9 @@ struct PipelineStats {
     std::uint64_t stateSaves = 0, stateRestores = 0, stateFailures = 0;
     RenderResult last = RenderResult::Disabled;
     BackendFailure failure = BackendFailure::None;
+    std::uint64_t renders = 0, initFailures = 0, experimentalAdmissions = 0;
+    unsigned shader = 0, font = 0, buffer = 0;
+    bool contextLive = false, backendReady = false, poisoned = false, disabled = false;
 };
 class RendererPipeline {
   public:
@@ -31,6 +35,8 @@ class RendererPipeline {
     const PipelineStats& stats() const { return stats_; }
   private:
     bool initialize();
+    bool memoryHealthy();
+    void cleanupOwned();
     RenderResult skip(RenderResult reason);
     ImGuiArena& arena_;
     GlApi& api_;

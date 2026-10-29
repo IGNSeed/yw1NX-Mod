@@ -199,7 +199,11 @@ void prepareContextDiagnostic() {
 #endif
     probe.initialize(2, platform.api, platform);
 }
+#if YW1_NATIVE_RENDER_EXPERIMENT
+void probeContextCallback(std::uintptr_t swapDisplay, std::uintptr_t swapSurface) {
+#else
 void probeContextCallback() {
+#endif
     using F = CallbackField;
     const auto word = [](F f) {
         return yw1_callback_diagnostics.words[static_cast<unsigned>(f)].load(
@@ -209,7 +213,13 @@ void probeContextCallback() {
         word(F::OriginalPublished) == 1 && word(F::InstallResult) == 0 && word(F::GuardResult) == 0);
 #if YW1_RENDER_EXPERIMENT
     if (word(F::HookActive) == 1 && word(F::OriginalPublished) == 1 &&
-        word(F::InstallResult) == 0 && word(F::GuardResult) == 0) { probeRenderCallback(); }
+        word(F::InstallResult) == 0 && word(F::GuardResult) == 0) {
+#if YW1_NATIVE_RENDER_EXPERIMENT
+        probeRenderCallback(swapDisplay, swapSurface);
+#else
+        probeRenderCallback();
+#endif
+    }
 #endif
 }
 #else

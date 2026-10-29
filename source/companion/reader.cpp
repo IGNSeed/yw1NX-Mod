@@ -1045,7 +1045,7 @@ void inspectBoundProcess(Report& report, Observation& observation, Handle proces
     if (!observation.legacyModule && !observation.b028Profile && !reader.quarantined()) {
         observation.renderReadResult = kExportChanged;
         for (unsigned attempt = 0; attempt < 2; ++attempt) {
-            std::array<std::uint64_t, 65> first{}, second{};
+            std::array<std::uint64_t, diagnostics::kRenderWords + 1> first{}, second{};
             auto rc = reader.read(kRenderOffset, first.data(), sizeof(first));
             if (rc == 0) { rc = reader.read(kRenderOffset, second.data(), sizeof(second)); }
             if (rc != 0) { observation.renderReadResult = rc; break; }

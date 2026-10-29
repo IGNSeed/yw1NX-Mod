@@ -293,10 +293,18 @@ void runCallbackDiagnostic(std::uint32_t eglGuard) {
 }
 } // 名前空間 yw1::bootstrap
 
+#if YW1_NATIVE_RENDER_EXPERIMENT
+extern "C" void yw1_canary_enter(std::uintptr_t swapDisplay, std::uintptr_t swapSurface) {
+#else
 extern "C" void yw1_canary_enter() {
+#endif
     yw1::diagnostics::recordCallbackEnter();
 #if YW1_EGL_CONTEXT_PROBE
+#if YW1_NATIVE_RENDER_EXPERIMENT
+    yw1::bootstrap::probeContextCallback(swapDisplay, swapSurface);
+#else
     yw1::bootstrap::probeContextCallback();
+#endif
 #endif
 }
 extern "C" void yw1_canary_return(std::uint32_t result) {

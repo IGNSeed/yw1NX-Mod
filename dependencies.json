@@ -1,7 +1,7 @@
 {
     "schemaVersion": 1,
-    "integrationStatus": "bootstrap-independent-companion-diagnostics-hardware-pending",
-    "preferredRenderingBackend": "Dear ImGui official OpenGL3 (diagnostics pending)",
+    "integrationStatus": "native-opengl-imgui-experimental-hardware-pending",
+    "preferredRenderingBackend": "Dear ImGui official OpenGL3 (Native experimental, hardware pending)",
     "dependencies": [
         {
             "name": "exlaunch",
@@ -44,10 +44,21 @@
             "license": "MIT",
             "archiveSha256": "de47237a08716941b345f395c8ccbc689b85c6cc2c73d5138cfb0500340a2bc9",
             "sourceManifestSha256": "15916057a66b9b3deeb38aba53124062166e04f029643484ee52c18471477665",
-            "linkedRuntime": false,
+            "linkedRuntime": "YW1_NATIVE_RENDER_EXPERIMENT=ON only",
             "buildSystem": "core C++ sources with platform and renderer backends",
             "localAdapter": "cmake/imgui_safe_patch.cmake",
-            "notes": "B.0.2.12は専用arena・型付きresolver・状態保全adapter・Context監視・最小/Demo pipelineを独立AArch64 archiveとしてビルド。固定原本は保持して限定Patchをbuild領域へ生成。任意OOM契約が未成立のためゲームModuleは基盤診断だけを実行し描画を許可しない。imgui-xenoの固定版を保持し混在・置換しない。"
+            "nativeAdapter": "cmake/native_imgui_runtime.cmake",
+            "notes": "B.0.2.14は明示したNative実験ProfileのMINIMAL/DEMOだけをゲームModuleへリンク。1MiB専用arena・型付きresolver・GL状態復元を使用。任意OOM完全回復は未証明のまま通常経路の実験Admissionを別途記録する。公式Demoの31箇所のsprintfは容量推論付きImFormatStringへ限定置換し、固定原本とMIT表記を保持する。入力・INI・ファイル・shell・既定allocatorを無効化。imgui-xenoの固定版を維持する。"
+        },
+        {
+            "name": "stb_sprintf",
+            "repository": "https://github.com/nothings/stb",
+            "revision": "2b2e64bc4778df6a06fbea3a5dbe61f7a76ecf19",
+            "file": "stb_sprintf.h",
+            "fileSha256": "e0b8c56e1084602290b9a17ef59f429b5293deb8cb9d8b0f20a14abc39b56520",
+            "license": "MIT OR Unlicense (MIT selected)",
+            "linkedRuntime": "YW1_NATIVE_RENDER_EXPERIMENT=ON only",
+            "notes": "固定1.10をbuild領域へ取得し、原本ライセンスを保持。ImGuiと私有snprintfの有限書式化に使用。libcのheap・FS依存をゲームModuleへ持ち込まない。"
         }
     ]
 }

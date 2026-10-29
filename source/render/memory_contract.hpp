@@ -17,4 +17,10 @@ constexpr std::uint64_t nativeMemoryBlockMask(unsigned mode) {
 constexpr bool nativeMemoryAdmitted(unsigned mode) {
     return mode > 0 && mode <= 2 && nativeMemoryBlockMask(mode) == 0;
 }
+// B0214の明示的な開発用許可。完全OOM回復とは別で、通常経路の容量を検査する。
+constexpr bool normalPathExperimentAdmitted(unsigned mode, bool requested,
+    std::uint64_t capacity, std::uint64_t largestFree, bool initialized) {
+    return requested && (mode == 1 || mode == 2) && capacity >= 1048576 &&
+        largestFree >= (initialized ? 262144 : 786432);
+}
 } // 名前空間 yw1::render

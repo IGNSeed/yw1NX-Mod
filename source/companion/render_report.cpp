@@ -14,11 +14,13 @@ const char* functionName(std::uint64_t i) {
     return i < std::size(render::kGlFunctions) ? render::kGlFunctions[i].name : "none";
 }
 const char* modeName(std::uint64_t mode) {
-    return mode == 1 ? "MINIMAL" : mode == 2 ? "DEMO" : "OFF";
+    return mode == 1 ? "MINIMAL" : mode == 2 ? "DEMO" : mode == 3 ? "DIAGNOSTIC" : "OFF";
 }
 } // 無名名前空間
 void appendRenderReport(Report& r, const Observation& o) {
-#if YW1_RENDER_MEMORY_DIAGNOSTICS
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    r.append("\n=== YW1 Renderer Activation B0.2.14 ABI4 ===\nrender_read_result=0x%08X\n",
+#elif YW1_RENDER_MEMORY_DIAGNOSTICS
     r.append("\n=== YW1 Renderer Memory B0.2.13 ABI3 ===\nrender_read_result=0x%08X\n",
 #else
     r.append("\n=== YW1 Renderer Foundation B0.2.12 ABI2 ===\nrender_read_result=0x%08X\n",
@@ -50,8 +52,12 @@ void appendRenderReport(Report& r, const Observation& o) {
     r.append("loader_first_failure=%s\nrender_context=0x%016llX render_thread=0x%016llX\n"
              "render_display=0x%016llX draw_surface=0x%016llX read_surface=0x%016llX\n"
              "render_api=0x%04llX thread_result=0x%08X binding_result=%llu\n"
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+             "resource_state_0=not_attempted hardware_visibility=unconfirmed GL_error=not_consumed\n",
+#else
              "resource_state_0=not_attempted native_imgui_calls=blocked_before_allocation\n"
              "Draw=disabled Demo_visible=not_observed GL_error=not_consumed\n",
+#endif
         functionName(w[F::GlFirstFailure]), static_cast<unsigned long long>(w[F::Context]),
         static_cast<unsigned long long>(w[F::Thread]), static_cast<unsigned long long>(w[F::Display]),
         static_cast<unsigned long long>(w[F::DrawSurface]),
@@ -86,12 +92,18 @@ void appendRenderReport(Report& r, const Observation& o) {
     }
 }
 void showRenderPage(const Observation& o, bool memoryPage) {
-#if YW1_RENDER_MEMORY_DIAGNOSTICS
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+    std::printf("Renderer Activation B0.2.14 %s\nRead: %08X\n",
+#elif YW1_RENDER_MEMORY_DIAGNOSTICS
     std::printf("Renderer Memory B0.2.13 %s\nRead: %08X\n",
 #else
     std::printf("Renderer Foundation B0.2.12 %s\nRead: %08X\n",
 #endif
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+                memoryPage ? "2/3" : "1/3", o.renderReadResult);
+#else
                 memoryPage ? "2/2" : "1/2", o.renderReadResult);
+#endif
     if (!available(o)) { std::printf("Runtime state: unknown / wrong pair or ABI\n"); }
     else {
         const auto& w = o.render;
@@ -120,7 +132,11 @@ void showRenderPage(const Observation& o, bool memoryPage) {
 #if YW1_RENDER_MEMORY_DIAGNOSTICS
             std::printf("Largest allocation: %llu Attempts: %llu\n"
                         "Largest free: %llu Reserved: %llu\n"
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+                        "Complete OOM admission: %llu Unproven mask: %02llX\n"
+#else
                         "Native admission: %llu Unproven mask: %02llX\n"
+#endif
                         "Host fault evidence: external / Native: %s\n",
                 static_cast<unsigned long long>(w[F::ArenaLargestAllocation]),
                 static_cast<unsigned long long>(w[F::ArenaAttempts]),
@@ -160,8 +176,18 @@ void showRenderPage(const Observation& o, bool memoryPage) {
                 std::printf("Last Original: %08X\n", static_cast<unsigned>(o.callback[C::LastOriginalResult]));
             }
         }
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+        std::printf("Draw policy: %s / Visibility: user observation\n",
+                    w[F::ExperimentalEnabled] ? "Native experimental ON" : "OFF");
+#else
         std::printf("Draw: disabled / Demo visible: not observed\n");
+#endif
     }
-    std::printf("A: summary L: previous %s B: back\n", memoryPage ? "" : "R: memory / GL loader");
+    std::printf("A: summary L: previous %s B: back\n", memoryPage ?
+#if YW1_RENDER_ACTIVATION_DIAGNOSTICS
+        "R: Native runtime" : "R: memory / GL loader");
+#else
+        "" : "R: memory / GL loader");
+#endif
 }
 } // 名前空間 yw1::companion
