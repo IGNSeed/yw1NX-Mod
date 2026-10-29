@@ -163,6 +163,10 @@ if(YW1_RENDER_DIAGNOSTICS)
         target_link_libraries(yw1_bootstrap PRIVATE yw1_render_foundation)
         target_sources(yw1_bootstrap PRIVATE source/bootstrap/imgui_runtime.cpp
             source/render/runtime_text.cpp)
+        if(YW1_DEVELOPMENT_MODULE)
+            target_sources(yw1_bootstrap PRIVATE source/render/runtime_mode.cpp)
+            target_compile_definitions(yw1_bootstrap PRIVATE YW1_DEVELOPMENT_MODULE=1)
+        endif()
         target_link_options(yw1_bootstrap PRIVATE
             -Wl,--wrap=sscanf,--wrap=snprintf,--wrap=vsnprintf,--wrap=printf,--wrap=atof,--wrap=strtoul)
         target_compile_definitions(yw1_bootstrap PRIVATE

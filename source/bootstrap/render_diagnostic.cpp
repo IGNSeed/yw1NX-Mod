@@ -108,6 +108,11 @@ void probeRenderCallback() {
 #endif
     if (!monitor.tryEnter()) { busySkips.fetch_add(1, std::memory_order_relaxed); return; }
     ScopeExit lease{[&] { monitor.leave(); }};
+#if YW1_DEVELOPMENT_MODULE
+    const auto requestedMode = runtimeModeControl().requested();
+    wire[F::Mode] = static_cast<unsigned>(requestedMode);
+    wire[F::NativeMemoryBlockMask] = nativeMemoryBlockMask(static_cast<unsigned>(requestedMode));
+#endif
     ++wire[F::Callbacks]; ++wire[F::Skips];
     if (!configured || !contextPlatform || contextPlatform->validate(api) != 0 ||
         contextPlatform->ready() != ProbeReason::None) {
@@ -139,6 +144,19 @@ void probeRenderCallback() {
                 RenderDisable::Changed : RenderDisable::Context);
         return;
     }
+#if YW1_DEVELOPMENT_MODULE
+    if (requestedMode == RenderMode::Off) {
+        wire[F::Stage] = static_cast<unsigned>(RenderStage::Disabled);
+        if (pipeline) {
+            static_cast<void>(pipeline->frame(RenderMode::Off, binding, {},
+                MemoryAdmission::NativeExperimental));
+        } else {
+            wire[F::LastRenderResult] = static_cast<unsigned>(RenderResult::Disabled);
+        }
+        finish(RenderDisable::None);
+        return;
+    }
+#endif
     if (!wire[F::ArenaInitialized]) {
         wire[F::Stage] = static_cast<unsigned>(RenderStage::Allocator);
         if (!readable(reinterpret_cast<std::uintptr_t>(arenaStorage.data()), arenaStorage.size(),
@@ -196,7 +214,13 @@ void probeRenderCallback() {
     if (!pipeline) { pipeline = ::new (pipelineStorage.data()) RendererPipeline(arena, verifiedApi); }
     wire[F::Stage] = static_cast<unsigned>(RenderStage::Rendering);
     const FrameInput input{static_cast<unsigned>(viewport[2]), static_cast<unsigned>(viewport[3]),1,1,time};
-    const auto renderResult = pipeline->frame(static_cast<RenderMode>(YW1_RENDER_MODE), binding, input,
+    const auto renderResult = pipeline->frame(
+#if YW1_DEVELOPMENT_MODULE
+        requestedMode,
+#else
+        static_cast<RenderMode>(YW1_RENDER_MODE),
+#endif
+        binding, input,
                                         MemoryAdmission::NativeExperimental);
     if (renderResult == RenderResult::Submitted) { --wire[F::Skips]; }
     finish(renderResult == RenderResult::Submitted ? RenderDisable::None :

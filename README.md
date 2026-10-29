@@ -1,9 +1,9 @@
 # yw1NX-Mod
 
 「妖怪ウォッチ1 for Nintendo Switch」向けMODの開発基盤です。
-Phase 1 Stage B.0.2.14では、固定版exlaunchの追加Moduleと既存EGL Callbackから、
-公式Dear ImGui / OpenGL3の実験描画へ接続しています。Nativeの最小ウィンドウと公式Demoは
-別々の明示した開発用Profileです。Hostの実OpenGL描画を検証済みですが、
+Phase 1 Stage B.0.2.15では、固定版exlaunchの追加Moduleと既存EGL Callbackから、
+公式Dear ImGui / OpenGL3の実験描画へ接続する単一の開発構成を用意しています。
+`YW1_DEVELOPMENT_MODULE=ON` は公式Demoを既定で表示し、診断NROをビルドしません。
 この版のSwitch実機表示とゲームプレイ継続はPENDINGです。
 入力連携、独自メニュー、ゲーム機能変更は実装していません。
 
@@ -11,7 +11,7 @@ Phase 1 Stage B.0.2.14では、固定版exlaunchの追加Moduleと既存EGL Call
 EdiZon表示値`7F35BDFC5DE46CF1`は完全なNSO Build IDと区別します。
 ゲームダンプ・解析DB・解析結果・ローカルツール・テストは公開しません。
 
-描画の既定値はOFFです。`YW1_NATIVE_RENDER_EXPERIMENT=ON` は、ABI4診断、描画基盤、
+基礎構成の描画既定値はOFFです。`YW1_NATIVE_RENDER_EXPERIMENT=ON` は、ABI4診断、描画基盤、
 CANARY Callback、`YW1_IMGUI_RENDER_MODE=MINIMAL` または `DEMO` の明示設定を要求します。
 `DIAGNOSTIC` はArena・GL Resolver・Context監視までで描画しません。A/BにもImGuiを
 リンクしません。対象識別、固定命令、関数Pointer、EGL Binding、Render Thread、
@@ -22,6 +22,16 @@ Stack余裕、1MiB以上の私有Arenaを確認してからNative初期化へ進
 上流内部の任意OOMから常に復帰できるとは保証しません。Context喪失・変更後は再描画せず、
 旧GPU資源を別Contextで解放しません。新しいゲームprocessで初期状態へ戻ります。
 ModuleはゲームのAllocatorやFSを使用せず、診断NROが既存の唯一のログ保存先を使用します。
+
+単一開発構成のRuntime ModeはOFF / MINIMAL / DEMOです。要求は原子的に受け取り、
+Render callback境界で適用します。入力操作による切替はまだありません。
+切替でImGui ContextやGL資源を作り直さず、OFFでもOriginal Swapを呼びます。
+過去の個別Profileは回帰・復旧用途として保持しています。
+
+**Native SD Loggerの統合は未完了です。** 旧独立FS経路には追加接続失敗の実機記録があり、
+SDK経路の初期化失敗にはabortが残ります。安全な遅延Worker・FS契約が確認できるまで、
+直接SD保存との併用禁止を維持しています。この構成だけで`logs.txt`を回収する手順は
+まだ成立していません。NPDM・ゲームFS設定・mount・エラーポリシーは変更しません。
 
 ## ビルド
 
@@ -42,6 +52,12 @@ MSVCなどのホスト環境でも、toolchain指定を省略して静的ライ�
 ホスト動作の検証とSwitch実機での動作確認は別の判定です。
 
 ### Bootstrap（B.0.1の基礎構成、開発用）
+
+通常開発の単一Moduleは、devkitA64 Release構成へ
+`-DYW1_DEVELOPMENT_MODULE=ON -DYW1_BUILD_RENDER_FOUNDATION=ON` を指定して生成します。
+固定依存の取得または同じpinのローカル依存指定が必要です。
+導入物は`yw1_bootstrap.nso`を`subsdk9`として使用し、ELF/MapはPCへ保持します。
+Native Logger未統合のため、B.0.2.15全体の完成判定はPARTIALです。
 
 以下は描画を含まない初期Bootstrap・旧SD Workerの説明です。
 B.0.2.14のNative描画は上記の明示した実験構成を使用し、旧Workerを併用しません。

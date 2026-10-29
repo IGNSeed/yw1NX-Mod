@@ -85,7 +85,11 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     state.writerPolicy.store(2, std::memory_order_release);
     // Writerをリンクしないprofileなので、exlaunch完了とは独立に外部回収を許可する。
     recordWriterTerminal(3);
-#if YW1_BOOTSTRAP_EGL_DIAGNOSTIC
+#if YW1_DEVELOPMENT_MODULE
+    writeLog("\n=== YW1 B0.2.15 development module ===\n"
+             "mod_version=B0.2.15\ngame_version=1.4.0\nruntime_mode_default=DEMO\n"
+             "native_sd_logger=not_implemented\nsource=module-bootstrap\n");
+#elif YW1_BOOTSTRAP_EGL_DIAGNOSTIC
 #if YW1_BOOTSTRAP_SAFE_HOOK_DIAGNOSTIC
     writeLog("\n=== YW1 B0.2.1 boot / safe hook prerequisites ===\nsource=module-bootstrap\n");
 #else

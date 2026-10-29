@@ -2,11 +2,11 @@
 #include "context_monitor.hpp"
 #include "gl_state.hpp"
 #include "imgui_arena.hpp"
+#include "runtime_mode.hpp"
 #include "imgui.h"
 struct ImGuiContext;
 
 namespace yw1::render {
-enum class RenderMode : unsigned { Off, Minimal, Demo };
 enum class MemoryAdmission : unsigned { Unproven, IsolatedHostProcess, NativeExperimental };
 enum class RenderResult : unsigned {
     Submitted, Disabled, Context, MemoryUnproven, Budget, InvalidFrame, Backend, State, NoCommands,
