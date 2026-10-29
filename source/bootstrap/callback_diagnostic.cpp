@@ -6,6 +6,9 @@
 #include "diagnostics/egl_snapshot.hpp"
 #include "hooking/callsite_installer.hpp"
 #include "logging/memory_log.hpp"
+#if YW1_NATIVE_SD_LOGGER
+#include "logging/native_logger.hpp"
+#endif
 #include <common.hpp>
 #include <lib/util/sys/cur_proc_handle.hpp>
 #include <lib/util/sys/mem_layout.hpp>
@@ -309,4 +312,7 @@ extern "C" void yw1_canary_enter() {
 }
 extern "C" void yw1_canary_return(std::uint32_t result) {
     yw1::diagnostics::recordCallbackReturn(result);
+#if YW1_NATIVE_SD_LOGGER
+    yw1::logging::notifyNativeLoggerAfterSwap(result);
+#endif
 }

@@ -9,7 +9,9 @@
 namespace yw1::diagnostics {
 constexpr std::uint64_t kRenderMagic = 0x32314449315759;
 #if YW1_RENDER_ACTIVATION_DIAGNOSTICS
-#if YW1_DEVELOPMENT_MODULE
+#if YW1_NATIVE_SD_LOGGER
+constexpr std::uint64_t kRenderAbi = 4, kRenderTag = 0xB002151;
+#elif YW1_DEVELOPMENT_MODULE
 constexpr std::uint64_t kRenderAbi = 4, kRenderTag = 0xB00215;
 #else
 constexpr std::uint64_t kRenderAbi = 4, kRenderTag = 0xB00214;

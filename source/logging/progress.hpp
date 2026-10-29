@@ -37,6 +37,7 @@ enum class Stage : std::uint32_t {
     FileFlush,
     SessionClose,
     Saved,
+    FileRead,
     PriorityQuery = 60,
     GuardDenied,
     LaunchAwait,

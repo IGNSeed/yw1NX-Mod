@@ -20,9 +20,10 @@ std::size_t align16(std::size_t offset) {
 
 Result IpcFs::call(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
                    void* output, std::size_t outputSize, Handle* object, const char* path,
-                   const char* buffer, std::size_t bufferSize, bool pid) {
+                   const char* buffer, std::size_t bufferSize, bool pid,
+                   char* receiveBuffer, std::size_t receiveSize) {
     Stage stage = Stage::SessionClose;
-    if (session == sm_) {
+    if (session == sm_ || session == borrowedSm_) {
         stage = command == 0 ? Stage::SmRegister
                              : (command == 1 ? Stage::SmGetService : Stage::SmDetach);
     } else if (session == proxy_) {
@@ -43,21 +44,25 @@ Result IpcFs::call(Handle session, std::uint32_t command, const void* input, std
             break;
         }
     } else if (session == file_) {
-        stage =
-            command == 4 ? Stage::FileSize : (command == 1 ? Stage::FileWrite : Stage::FileFlush);
+        stage = command == 4 ? Stage::FileSize : command == 0 ? Stage::FileRead :
+            command == 1 ? Stage::FileWrite : Stage::FileFlush;
     }
     recordProgress(stage, kInProgress);
     return recordProgress(stage, callRaw(session, command, input, inputSize, output, outputSize,
-                                         object, path, buffer, bufferSize, pid));
+                                         object, path, buffer, bufferSize, pid,
+                                         receiveBuffer, receiveSize));
 }
 
 Result IpcFs::callRaw(Handle session, std::uint32_t command, const void* input,
                       std::size_t inputSize, void* output, std::size_t outputSize, Handle* object,
-                      const char* path, const char* buffer, std::size_t bufferSize, bool pid) {
+                      const char* path, const char* buffer, std::size_t bufferSize, bool pid,
+                      char* receiveBuffer, std::size_t receiveSize) {
     // 送信失敗・タイムアウト時の再送はしない。書込みの二重実行を避ける。
     if (quarantined_ || session == 0 || inputSize > 64 || outputSize > 8 ||
         (inputSize && input == nullptr) || (outputSize && output == nullptr) ||
-        bufferSize > kLogCapacity || (bufferSize && buffer == nullptr) || requests_ >= 64) {
+        bufferSize > kLogCapacity || (bufferSize && buffer == nullptr) || requests_ >= 64 ||
+        receiveSize > kLogCapacity || (receiveSize && receiveBuffer == nullptr) ||
+        (receiveSize && bufferSize)) {
         return kInvalidResponse;
     }
     const auto now = api_.ticks(api_.user);
@@ -69,7 +74,8 @@ Result IpcFs::callRaw(Handle session, std::uint32_t command, const void* input,
         words[i] = 0;
     }
     const std::uint32_t rawWords = static_cast<std::uint32_t>((32 + inputSize + 3) / 4);
-    words[0] = 4 | (path ? 1u << 16 : 0) | (bufferSize ? 1u << 20 : 0);
+    words[0] = 4 | (path ? 1u << 16 : 0) | (bufferSize ? 1u << 20 : 0) |
+               (receiveSize ? 1u << 24 : 0);
     words[1] = rawWords | (pid ? 1u << 31 : 0);
     std::size_t cursor = 2;
     if (pid) {
@@ -103,31 +109,49 @@ Result IpcFs::callRaw(Handle session, std::uint32_t command, const void* input,
         words[cursor++] = 1 | static_cast<std::uint32_t>(((address >> 36) & 0x3FFFFF) << 2) |
                           static_cast<std::uint32_t>(((address >> 32) & 15) << 28);
     }
+    if (receiveSize) {
+        const auto address = reinterpret_cast<std::uintptr_t>(receiveBuffer);
+        if (address >> 58) { return kInvalidResponse; }
+        words[cursor++] = static_cast<std::uint32_t>(receiveSize);
+        words[cursor++] = static_cast<std::uint32_t>(address);
+        words[cursor++] = 1 | static_cast<std::uint32_t>(((address >> 36) & 0x3FFFFF) << 2) |
+                          static_cast<std::uint32_t>(((address >> 32) & 15) << 28);
+    }
     const auto start = align16(cursor * 4) / 4;
     words[start] = 0x49434653;
     words[start + 2] = command;
     copyBytes(words + start + 4, input, inputSize);
-    Handle event = 0;
     ++requests_;
-    Result result = api_.submit(api_.user, &event, words, kPageSize, session);
-    if (result != 0) {
-        // SVC失敗時の出力handleは未定義なので閉じない。
-        return result;
-    }
-    if (event == 0) {
-        quarantined_ = true;
-        return kInvalidResponse;
-    }
-    const auto submittedAt = api_.ticks(api_.user);
-    const auto remainingTicks = submittedAt < deadline_ ? deadline_ - submittedAt : 0;
-    const auto remainingNs = remainingTicks * 1000000000 / kTickFrequency;
-    result = api_.wait(api_.user, event, remainingNs < kWaitLimitNs ? remainingNs : kWaitLimitNs);
-    const Result closeResult = api_.close(api_.user, event);
-    if (result != 0) {
-        // 通信は取消完了と認定しない。静的領域・セッションを終了まで隔離する。
-        // packet/path/送信データに触れず、同一プロセスで再開しない。
-        quarantined_ = true;
-        return result;
+    Result result = 0, closeResult = 0;
+    if (api_.sendSync != nullptr) {
+        result = api_.sendSync(api_.user, words, kPageSize, session);
+        if (api_.abandoned != nullptr && api_.abandoned(api_.user)) {
+            quarantined_ = true;
+            return kDeadline;
+        }
+        if (result != 0) { return result; }
+    } else {
+        Handle event = 0;
+        result = api_.submit(api_.user, &event, words, kPageSize, session);
+        if (result != 0) {
+            // SVC失敗時の出力handleは未定義なので閉じない。
+            return result;
+        }
+        if (event == 0) {
+            quarantined_ = true;
+            return kInvalidResponse;
+        }
+        const auto submittedAt = api_.ticks(api_.user);
+        const auto remainingTicks = submittedAt < deadline_ ? deadline_ - submittedAt : 0;
+        const auto remainingNs = remainingTicks * 1000000000 / kTickFrequency;
+        result = api_.wait(api_.user, event,
+                          remainingNs < kWaitLimitNs ? remainingNs : kWaitLimitNs);
+        closeResult = api_.close(api_.user, event);
+        if (result != 0) {
+            // 取消完了と認定せず、静的領域と所有Sessionを終了まで隔離する。
+            quarantined_ = true;
+            return result;
+        }
     }
     // 完了eventはkernelのmapping解除・user buffer復元後に通知される。
     if (words[0] == 0 && words[1] == 0) {
@@ -183,7 +207,7 @@ Result IpcFs::callRaw(Handle session, std::uint32_t command, const void* input,
 }
 
 Result IpcFs::initialize() {
-    if (sm_ != 0 || proxy_ != 0 || quarantined_) {
+    if (sm_ != 0 || borrowedSm_ != 0 || proxy_ != 0 || quarantined_ || api_.connect == nullptr) {
         return kAlreadyRun;
     }
     // 接続成立前のSession予約失敗だけ、Workerで最大1回再試行する。
@@ -194,6 +218,7 @@ Result IpcFs::initialize() {
         sm = 0;
         recordProgress(Stage::SmConnect, kInProgress);
         result = recordProgress(Stage::SmConnect, api_.connect(api_.user, &sm, "sm:"));
+        connectResult_ = result;
 #if YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS
         diagnostics::yw1_module_diagnostics_state.smConnectAttempts.store(
             attempt, std::memory_order_release);
@@ -234,6 +259,7 @@ Result IpcFs::initialize() {
     if (result == 0) {
         constexpr char kService[8] = "fsp-srv";
         result = call(sm_, 1, kService, sizeof(kService), nullptr, 0, &proxy_);
+        serviceResult_ = result;
     }
     if (result == 0) {
         // 通常切断のOnClientDisconnectedは同一PIDのservice登録を後始末し得る。
@@ -244,6 +270,22 @@ Result IpcFs::initialize() {
         result = recordProgress(Stage::SmClose, release(sm_));
     }
     if (result == 0) {
+        result = call(proxy_, 1, &pid, sizeof(pid), nullptr, 0, nullptr, nullptr, nullptr, 0, true);
+    }
+    return result;
+}
+
+Result IpcFs::initializeFromSm(Handle borrowedSession) {
+    if (borrowedSession == 0 || sm_ != 0 || borrowedSm_ != 0 || proxy_ != 0 || quarantined_) {
+        return kInvalidResponse;
+    }
+    // 既存Sessionは登録変更・Detach・Closeせず、GetService要求だけを発行する。
+    borrowedSm_ = borrowedSession;
+    constexpr char service[8] = "fsp-srv";
+    auto result = serviceResult_ = call(borrowedSm_, 1, service, sizeof(service), nullptr, 0,
+                                       &proxy_);
+    if (result == 0) {
+        const std::uint64_t pid = 0;
         result = call(proxy_, 1, &pid, sizeof(pid), nullptr, 0, nullptr, nullptr, nullptr, 0, true);
     }
     return result;
@@ -266,13 +308,24 @@ Result IpcFs::createFile(const char* path) {
     return call(fs_, 0, arguments, sizeof(arguments), nullptr, 0, nullptr, path);
 }
 
-Result IpcFs::openFile(const char* path) {
-    const std::uint32_t mode = 2 | 4;
+Result IpcFs::openFile(const char* path, bool readable) {
+    const std::uint32_t mode = 2 | 4 | (readable ? 1u : 0u);
     return call(fs_, 8, &mode, sizeof(mode), nullptr, 0, &file_, path);
 }
 
 Result IpcFs::fileSize(std::uint64_t& size) {
     return call(file_, 4, nullptr, 0, &size, sizeof(size));
+}
+
+Result IpcFs::read(std::uint64_t offset, char* data, std::size_t size, std::uint64_t& actual) {
+    if (offset > kFileCapacity || size > kFileCapacity - offset || size == 0) {
+        return kFileLimit;
+    }
+    const std::uint64_t arguments[3]{0, offset, size};
+    actual = 0;
+    const auto result = call(file_, 0, arguments, sizeof(arguments), &actual, sizeof(actual),
+                            nullptr, nullptr, nullptr, 0, false, data, size);
+    return result == 0 && actual > size ? kInvalidResponse : result;
 }
 
 Result IpcFs::write(std::uint64_t offset, const char* data, std::size_t size) {

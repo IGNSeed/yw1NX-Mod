@@ -22,6 +22,8 @@ struct KernelApi {
     Result (*close)(void*, Handle);
     std::uint64_t (*ticks)(void*);
     void (*sleep)(void*, std::uint64_t) = nullptr;
+    Result (*sendSync)(void*, void*, std::size_t, Handle) = nullptr;
+    bool (*abandoned)(void*) = nullptr;
 };
 
 struct IpcStorage {
@@ -37,15 +39,25 @@ class IpcFs {
     IpcFs(KernelApi api, IpcStorage& storage, std::uint64_t deadlineTicks)
         : api_(api), storage_(storage), deadline_(deadlineTicks) {}
     Result initialize();
+    Result initializeFromSm(Handle borrowedSession);
     Result openSd();
     Result entryType(const char* path, std::uint32_t& type);
     Result createDirectory(const char* path);
     Result createFile(const char* path);
-    Result openFile(const char* path);
+    Result openFile(const char* path, bool readable = false);
     Result fileSize(std::uint64_t& size);
+    Result read(std::uint64_t offset, char* data, std::size_t size, std::uint64_t& actual);
     Result write(std::uint64_t offset, const char* data, std::size_t size);
     Result flush();
     Result closeAll();
+    bool beginTransaction(std::uint64_t deadlineTicks) {
+        if (quarantined_) { return false; }
+        deadline_ = deadlineTicks;
+        requests_ = 0;
+        return true;
+    }
+    Result connectResult() const { return connectResult_; }
+    Result serviceResult() const { return serviceResult_; }
     bool quarantined() const {
         return quarantined_;
     }
@@ -56,23 +68,28 @@ class IpcFs {
   private:
     Result callRaw(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
                    void* output, std::size_t outputSize, Handle* object, const char* path,
-                   const char* buffer, std::size_t bufferSize, bool pid);
+                   const char* buffer, std::size_t bufferSize, bool pid,
+                   char* receiveBuffer = nullptr, std::size_t receiveSize = 0);
     Result call(Handle session, std::uint32_t command, const void* input, std::size_t inputSize,
                 void* output = nullptr, std::size_t outputSize = 0, Handle* object = nullptr,
                 const char* path = nullptr, const char* buffer = nullptr,
-                std::size_t bufferSize = 0, bool pid = false);
+                std::size_t bufferSize = 0, bool pid = false,
+                char* receiveBuffer = nullptr, std::size_t receiveSize = 0);
     Result release(Handle& handle);
     Result detachSm();
     KernelApi api_;
     IpcStorage& storage_;
     std::uint64_t deadline_;
     Handle sm_ = 0;
+    Handle borrowedSm_ = 0;
     Handle proxy_ = 0;
     Handle fs_ = 0;
     Handle file_ = 0;
     std::uint32_t requests_ = 0;
     bool quarantined_ = false;
     bool smNeedsDetach_ = false;
+    Result connectResult_ = kInProgress;
+    Result serviceResult_ = kInProgress;
 };
 
 } // 名前空間 yw1::logging

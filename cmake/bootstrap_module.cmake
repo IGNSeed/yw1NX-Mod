@@ -74,6 +74,13 @@ if(YW1_BOOTSTRAP_SD_LOGGING)
     target_compile_definitions(yw1_bootstrap PRIVATE YW1_BOOTSTRAP_SD_LOGGING=1)
     target_compile_options(yw1_bootstrap PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-fstack-usage>")
 endif()
+if(YW1_NATIVE_SD_LOGGER)
+    target_sources(yw1_bootstrap PRIVATE source/logging/ipc_fs.cpp
+        source/logging/native_snapshot.cpp source/logging/snapshot_writer.cpp
+        source/logging/native_logger.cpp source/logging/sm_session.cpp
+        source/logging/native_sm_session.cpp)
+    target_compile_definitions(yw1_bootstrap PRIVATE YW1_NATIVE_SD_LOGGER=1)
+endif()
 if(YW1_BOOTSTRAP_EXLAUNCH_DIAGNOSTIC)
     target_sources(yw1_bootstrap PRIVATE
         "${PROJECT_SOURCE_DIR}/source/bootstrap/exlaunch_preflight.cpp")

@@ -34,6 +34,12 @@ endif()
 
 option(YW1_BUILD_BOOTSTRAP "Build the Stage B.0.1 bootstrap module" OFF)
 option(YW1_BOOTSTRAP_SD_LOGGING "Enable the bounded independent SD logging worker" OFF)
+option(YW1_NATIVE_SD_LOGGER "Enable deferred periodic raw SD snapshots in the development module" OFF)
+if(YW1_NATIVE_SD_LOGGER AND
+   (NOT YW1_DEVELOPMENT_MODULE OR YW1_BOOTSTRAP_SD_LOGGING OR YW1_BOOTSTRAP_FS_DIAGNOSTIC OR
+    YW1_BUILD_DIAGNOSTICS_COMPANION))
+    message(FATAL_ERROR "Native logger requires the single development module and excludes legacy FS")
+endif()
 option(YW1_BOOTSTRAP_FS_DIAGNOSTIC "Isolate FS diagnostics from exlaunch initialization" OFF)
 option(YW1_BOOTSTRAP_EXTERNAL_DIAGNOSTICS "Expose the bounded B.0.1.5 diagnostic ABI" OFF)
 option(YW1_BUILD_DIAGNOSTICS_COMPANION "Build the read-only diagnostics NRO" OFF)

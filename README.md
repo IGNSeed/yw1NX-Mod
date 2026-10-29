@@ -1,7 +1,7 @@
 # yw1NX-Mod
 
 「妖怪ウォッチ1 for Nintendo Switch」向けMODの開発基盤です。
-Phase 1 Stage B.0.2.15では、固定版exlaunchの追加Moduleと既存EGL Callbackから、
+Phase 1 Stage B.0.2.15.1では、固定版exlaunchの追加Moduleと既存EGL Callbackから、
 公式Dear ImGui / OpenGL3の実験描画へ接続する単一の開発構成を用意しています。
 `YW1_DEVELOPMENT_MODULE=ON` は公式Demoを既定で表示し、診断NROをビルドしません。
 この版のSwitch実機表示とゲームプレイ継続はPENDINGです。
@@ -21,17 +21,36 @@ Stack余裕、1MiB以上の私有Arenaを確認してからNative初期化へ進
 既知の容量不足を事前拒否し、検出した割当失敗後は描画を停止しますが、
 上流内部の任意OOMから常に復帰できるとは保証しません。Context喪失・変更後は再描画せず、
 旧GPU資源を別Contextで解放しません。新しいゲームprocessで初期状態へ戻ります。
-ModuleはゲームのAllocatorやFSを使用せず、診断NROが既存の唯一のログ保存先を使用します。
+ImGuiはModule所有Arenaを使用します。Native Loggerは専用Raw WorkerからFSへ接続し、
+SDKのFS初期化・mount表・Allocator・エラーポリシーを変更しません。
 
 単一開発構成のRuntime ModeはOFF / MINIMAL / DEMOです。要求は原子的に受け取り、
 Render callback境界で適用します。入力操作による切替はまだありません。
 切替でImGui ContextやGL資源を作り直さず、OFFでもOriginal Swapを呼びます。
 過去の個別Profileは回帰・復旧用途として保持しています。
 
-**Native SD Loggerの統合は未完了です。** 旧独立FS経路には追加接続失敗の実機記録があり、
-SDK経路の初期化失敗にはabortが残ります。安全な遅延Worker・FS契約が確認できるまで、
-直接SD保存との併用禁止を維持しています。この構成だけで`logs.txt`を回収する手順は
-まだ成立していません。NPDM・ゲームFS設定・mount・エラーポリシーは変更しません。
+`YW1_NATIVE_SD_LOGGER=ON`で、診断NROを使わない定期SD保存を有効にします。
+最初のOriginal Swap成功後に一度だけ専用Workerを生成し、最初のSnapshot、約10秒ごとの
+更新、重要な診断状態の変化を保存します。OFFでもLoggerとOriginalは継続します。
+保存先は`SD:/atmosphere/contents/0100C0000CEEA000/yw1NX-MOD/logs.txt`だけです。
+この版のNative Loggerによる実機保存・描画・プレイ継続はPENDINGです。
+
+旧経路の`svcConnectToNamedPort("sm:")`失敗`0x10801`は追加Session予約の上限でした。
+新経路は固定SDKの完全Build ID・命令・構造を検証し、既存SM HandleへGetServiceだけを
+送ります。借用SMを登録変更・Detach・Closeせず、返された専用FSP/FS/Fileだけを所有します。
+SDKのFS初期化・StartThreadの既知abort経路は呼ばず、Raw SVCを使用します。
+
+ファイルはチェックサム付き4KiBの2枠、最大8KiBです。非アクティブ枠へのWrite/Flush後に
+commit receiptを保存し、再Readで一致したSequenceだけを確認済みとします。再起動時は
+有効な最大Sequenceを復元します。旧形式・大容量のログは切詰めず、保存を停止します。
+**初回導入前に旧`logs.txt`をPCへ退避し、元の場所を空けてください。**
+過去Bootの永久保管ではないため、必要なログはプレイ後にもPCへバックアップしてください。
+
+Render ThreadはFS IPC・ファイルWrite/Flush・Workerの完了待ちを行いません。
+同期IPCを約1秒で監視し、期限超過時はWorker・Session・静的IPC領域をprocess終了まで
+隔離します。同期SVC自体の取消や期限内復帰は保証しません。描画側は待たず、再試行も
+新Worker生成も行いません。保存先へ接続できない失敗はファイルに記録できません。
+初回正常Callbackより前の障害もSD診断の対象外です。NPDM権限は追加しません。
 
 ## ビルド
 
@@ -54,13 +73,14 @@ MSVCなどのホスト環境でも、toolchain指定を省略して静的ライ�
 ### Bootstrap（B.0.1の基礎構成、開発用）
 
 通常開発の単一Moduleは、devkitA64 Release構成へ
-`-DYW1_DEVELOPMENT_MODULE=ON -DYW1_BUILD_RENDER_FOUNDATION=ON` を指定して生成します。
+`-DYW1_DEVELOPMENT_MODULE=ON -DYW1_BUILD_RENDER_FOUNDATION=ON` と
+`-DYW1_NATIVE_SD_LOGGER=ON -DYW1_BUILD_DIAGNOSTICS_COMPANION=OFF` を指定して生成します。
 固定依存の取得または同じpinのローカル依存指定が必要です。
 導入物は`yw1_bootstrap.nso`を`subsdk9`として使用し、ELF/MapはPCへ保持します。
-Native Logger未統合のため、B.0.2.15全体の完成判定はPARTIALです。
+単一subsdk9の実験用Releaseです。Host検証とSwitch実機の保存確認は別の判定です。
 
 以下は描画を含まない初期Bootstrap・旧SD Workerの説明です。
-B.0.2.14のNative描画は上記の明示した実験構成を使用し、旧Workerを併用しません。
+B.0.2.15.1のNative Loggerは上記の専用構成を使用し、旧Workerを併用しません。
 
 こちらはCMake 3.24以上、C++23対応devkitA64、devkitProの`elf2nso`が必要です。
 上記と別のビルド先を指定します。

@@ -82,10 +82,18 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     using namespace yw1::logging;
     auto &state = yw1::diagnostics::yw1_module_diagnostics_state;
     yw1::diagnostics::setExportBootToken(svcGetSystemTick());
+#if YW1_NATIVE_SD_LOGGER
+    state.writerPolicy.store(1, std::memory_order_release);
+#else
     state.writerPolicy.store(2, std::memory_order_release);
     // Writerをリンクしないprofileなので、exlaunch完了とは独立に外部回収を許可する。
     recordWriterTerminal(3);
-#if YW1_DEVELOPMENT_MODULE
+#endif
+#if YW1_NATIVE_SD_LOGGER
+    writeLog("\n=== YW1 B0.2.15.1 development module ===\n"
+             "mod_version=B0.2.15.1\ngame_version=1.4.0\nruntime_mode_default=DEMO\n"
+             "native_sd_logger=deferred_raw_worker\nsource=module-bootstrap\n");
+#elif YW1_DEVELOPMENT_MODULE
     writeLog("\n=== YW1 B0.2.15 development module ===\n"
              "mod_version=B0.2.15\ngame_version=1.4.0\nruntime_mode_default=DEMO\n"
              "native_sd_logger=not_implemented\nsource=module-bootstrap\n");
@@ -103,7 +111,9 @@ extern "C" __attribute__((visibility("default"))) void yw1_bootstrap_init() {
     const auto finish = [] {
         writeLog("[YW1] bootstrap_init_returned\n");
         recordProgress(Stage::InitReturn, 0);
+#if !YW1_NATIVE_SD_LOGGER
         recordWriterTerminal(3);
+#endif
     };
     u64 titleId = 0;
     auto result = recordProgress(Stage::ProgramId,
